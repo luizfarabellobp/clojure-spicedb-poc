@@ -17,4 +17,6 @@
  :aliases
  {:run        {:main-opts ["-m" "streaming-authz.core"]}
   :mint-token {:exec-fn streaming-authz.dev.token/run!
-               :exec-args {:user-id "alice"}}}}
+               :exec-args {:user-id "alice"}}
+  :seed       {:exec-fn streaming-authz.infra.seed.generator/run!
+               :exec-args {:profile :small}}}}
