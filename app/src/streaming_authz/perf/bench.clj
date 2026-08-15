@@ -1,0 +1,56 @@
+(ns streaming-authz.perf.bench
+  (:refer-clojure :exclude [run!])
+  (:require [streaming-authz.config :as config]
+            [streaming-authz.domain.authz-client :as authz]
+            [streaming-authz.infra.spicedb.client :as spicedb-client]
+            [com.stuartsierra.component :as component]
+            [clojure.tools.logging :as log]
+            [clojure.pprint :as pprint]
+            [clojure.java.io :as io])
+  (:import [java.time Instant]))
+
+(defn- percentile [sorted-ms p]
+  (let [idx (int (Math/ceil (* p (dec (count sorted-ms)))))]
+    (nth sorted-ms idx)))
+
+(defn- summarize [label latencies-ms]
+  (let [sorted (vec (sort latencies-ms))]
+    {:label label
+     :count (count sorted)
+     :min-ms (first sorted)
+     :p50-ms (percentile sorted 0.50)
+     :p95-ms (percentile sorted 0.95)
+     :p99-ms (percentile sorted 0.99)
+     :max-ms (last sorted)}))
+
+(defn- timed-ms [f]
+  (let [start (System/nanoTime)]
+    (f)
+    (/ (- (System/nanoTime) start) 1e6)))
+
+(defn- bench-check [spicedb resource-id subject-id n]
+  (summarize (str "check-permission:" resource-id)
+    (repeatedly n #(timed-ms (fn [] (authz/check-permission spicedb
+                                       {:resource-type "movie" :resource-id resource-id
+                                        :permission "view" :subject-id subject-id}))))))
+
+(defn- bench-lookup [spicedb subject-id n]
+  (summarize "lookup-resources"
+    (repeatedly n #(timed-ms (fn [] (authz/lookup-resources spicedb
+                                       {:resource-type "movie" :permission "view" :subject-id subject-id}))))))
+
+(defn run! [{:keys [profile iterations] :or {profile :small iterations 100}}]
+  (let [config (config/load-config)
+        spicedb (component/start (spicedb-client/new-spicedb-client (:spicedb config)))
+        results {:profile profile
+                 :timestamp (str (Instant/now))
+                 :iterations iterations
+                 :simple-check (bench-check spicedb "grinch" "alice" iterations)
+                 :multi-path-check (bench-check spicedb "duro_de_matar" "alice" iterations)
+                 :lookup-resources (bench-lookup spicedb "alice" iterations)}
+        report-path (str "target/perf-report-" (name profile) "-" (System/currentTimeMillis) ".edn")]
+    (io/make-parents report-path)
+    (spit report-path (with-out-str (pprint/pprint results)))
+    (log/info "Relatório de performance salvo em" report-path)
+    (component/stop spicedb)
+    results))
