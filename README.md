@@ -39,18 +39,49 @@ negócio da aplicação e o datastore interno do SpiceDB.
 - `app` — API Clojure (Pedestal), autenticação JWT HS256 local, autorização
   via SpiceDB.
 
-## Como rodar
+## Pré-requisitos
 
-Requer Docker e `make`. O `.env` (com secrets de desenvolvimento) é
-gerado automaticamente na primeira vez — nunca reutilize esses valores
-fora de um ambiente local/isolado.
+- [Docker](https://docs.docker.com/get-docker/) instalado e **rodando**
+  (Docker Desktop no Mac/Windows, Docker Engine no Linux).
+- `make` (já vem por padrão no macOS e na maioria das distribuições Linux).
+
+Não precisa instalar Clojure, Java, Postgres nem SpiceDB na sua máquina —
+tudo roda dentro dos containers.
+
+## Como rodar do zero
 
 ```bash
-make up            # sobe a stack inteira (build incluso) e espera a app ficar pronta
-make logs           # acompanha os logs da app (Ctrl+C para sair)
+git clone https://github.com/luizfarabellobp/clojure-spicedb-poc.git
+cd clojure-spicedb-poc
+
+make up
 ```
 
-Ver `make help` para a lista completa de comandos.
+Isso faz tudo sozinho, sem passo manual nenhum:
+
+1. Gera um `.env` local com secrets de desenvolvimento aleatórias (só para
+   uso local — nunca reutilize esses valores em produção).
+2. Builda a imagem da aplicação e baixa as imagens do Postgres/SpiceDB
+   (pode levar alguns minutos na primeira vez — as próximas são rápidas).
+3. Sobe os containers na ordem certa (Postgres → migration do SpiceDB →
+   SpiceDB → aplicação).
+4. Espera a aplicação responder de verdade antes de devolver o terminal,
+   e então mostra:
+
+   ```
+   Aplicação pronta em http://localhost:3000
+   ```
+
+A partir daí, dois usuários de teste (`alice` e `bob`) já existem com
+planos, produtos e filmes pré-carregados automaticamente — não é preciso
+rodar nenhuma seed manual para testar os cenários abaixo.
+
+Outros comandos úteis:
+
+```bash
+make logs   # acompanha os logs da app em tempo real (Ctrl+C só sai do log, não para a app)
+make help   # lista todos os comandos disponíveis
+```
 
 ## Testar os cenários de autorização
 
