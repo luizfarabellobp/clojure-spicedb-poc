@@ -1,7 +1,34 @@
 # POC — Autorização com SpiceDB
 
-POC para avaliar a viabilidade do SpiceDB como motor de autorização (ReBAC) para
-conteúdos específicos de um sistema que já roda em Postgres.
+POC para avaliar a viabilidade do **SpiceDB** como motor de autorização
+(ReBAC — Relationship-Based Access Control) para conteúdos específicos de
+um sistema de streaming que já roda em Postgres.
+
+## Em resumo: o que é o SpiceDB e por que ele está aqui
+
+A pergunta que toda aplicação com controle de acesso precisa responder é
+"este usuário pode fazer esta ação neste recurso, agora?". O jeito
+tradicional é espalhar essa lógica em `if`s pelo código. O **SpiceDB** é
+um banco de dados especializado, inspirado no paper **Zanzibar** do
+Google, que trata essa pergunta como uma consulta a um **grafo de
+relações** ("alice é assinante do plano X", "o plano X dá acesso ao filme
+Y") em vez de lógica espalhada — esse modelo se chama **ReBAC**. A outra
+família de solução, **ABAC** (Attribute-Based Access Control), decide
+autorização avaliando atributos na hora (localização, dispositivo, plano)
+em vez de relações pré-escritas. A própria **Netflix** patrocinou uma
+funcionalidade do SpiceDB (chamada *Caveats*) justamente para misturar os
+dois modelos, quando precisou autorizar identidades de infraestrutura
+baseadas em atributos dinâmicos — um caso documentado publicamente e
+citado com fonte no artigo completo.
+
+Esta POC testa o cenário mais simples dessa mesma família: ReBAC puro,
+para modelar planos de assinatura, produtos avulsos e tags de conteúdo de
+um catálogo de filmes, com Postgres compartilhado entre os dados de
+negócio da aplicação e o datastore interno do SpiceDB.
+
+**Leitura completa, com todas as referências e o passo a passo do código:**
+- [`.docs/o-que-e-spicedb-rebac-abac.md`](.docs/o-que-e-spicedb-rebac-abac.md) — Zanzibar, ReBAC, ABAC, arquitetura do SpiceDB e o caso Netflix, com fontes.
+- [`.docs/como-o-spicedb-funciona-nesta-poc.md`](.docs/como-o-spicedb-funciona-nesta-poc.md) — o problema que esta POC resolve, as tabelas do banco, e como cada arquivo do código se encaixa.
 
 ## Arquitetura
 
@@ -14,20 +41,22 @@ conteúdos específicos de um sistema que já roda em Postgres.
 
 ## Como rodar
 
-```bash
-cp .env.example .env
-# editar .env: preencher SPICEDB_PRESHARED_KEY e JWT_HS256_SECRET
-# (valores de desenvolvimento arbitrários — nunca reutilizar em produção)
+Requer Docker e `make`. O `.env` (com secrets de desenvolvimento) é
+gerado automaticamente na primeira vez — nunca reutilize esses valores
+fora de um ambiente local/isolado.
 
-docker compose up --build -d
-docker compose logs -f app   # aguardar "streaming-authz started on port 3000"
+```bash
+make up            # sobe a stack inteira (build incluso) e espera a app ficar pronta
+make logs           # acompanha os logs da app (Ctrl+C para sair)
 ```
+
+Ver `make help` para a lista completa de comandos.
 
 ## Testar os cenários de autorização
 
 ```bash
-ALICE_JWT=$(docker compose exec app clojure -X:mint-token :user-id '"alice"')
-BOB_JWT=$(docker compose exec app clojure -X:mint-token :user-id '"bob"')
+ALICE_JWT=$(make mint-token USER_ID=alice | tail -1)
+BOB_JWT=$(make mint-token USER_ID=bob | tail -1)
 
 curl -s http://localhost:3000/movies/grinch/access -H "Authorization: Bearer $ALICE_JWT"
 curl -s http://localhost:3000/movies/avatar_3/access -H "Authorization: Bearer $ALICE_JWT"
@@ -54,8 +83,8 @@ curl -s -X POST http://localhost:3000/relationships \
 ## Seed volumétrica e performance
 
 ```bash
-docker compose exec app clojure -X:seed :profile :medium
-docker compose exec app clojure -X:bench :profile :medium :iterations 100
+make seed PROFILE=medium
+make bench PROFILE=medium ITERATIONS=100
 docker compose exec app sh -c 'cat $(ls -t target/perf-report-medium-*.edn | head -1)'
 ```
 
@@ -64,7 +93,7 @@ Profiles disponíveis: `small`, `medium`, `large` — ver `app/src/streaming_aut
 ## Resetar o ambiente
 
 ```bash
-docker compose down -v   # apaga volumes (Postgres do zero, incluindo dados do SpiceDB)
+make reset   # apaga volumes (Postgres do zero, incluindo dados do SpiceDB)
 ```
 
 ## Sem testes automatizados
