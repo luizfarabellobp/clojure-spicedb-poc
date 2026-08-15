@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: poc-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - poc_pg_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  spicedb-migrate:
+    image: authzed/spicedb:latest
+    container_name: poc-spicedb-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      migrate head
+      --datastore-engine=postgres
+      --datastore-conn-uri=postgres://spicedb_user:spicedb_pw@postgres:5432/spicedb?sslmode=disable
+    restart: "no"
+
+  spicedb:
+    image: authzed/spicedb:latest
+    container_name: poc-spicedb
+    depends_on:
+      spicedb-migrate:
+        condition: service_completed_successfully
+    command: >
+      serve
+      --grpc-preshared-key=${SPICEDB_PRESHARED_KEY}
+      --datastore-engine=postgres
+      --datastore-conn-uri=postgres://spicedb_user:spicedb_pw@postgres:5432/spicedb?sslmode=disable
+    ports:
+      - "50051:50051"
+
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: poc-app
+    depends_on:
+      - spicedb
+    environment:
+      PORT: "3000"
+      SPICEDB_ENDPOINT: "spicedb:50051"
+      SPICEDB_PRESHARED_KEY: ${SPICEDB_PRESHARED_KEY}
+      APP_DB_JDBC_URL: "jdbc:postgresql://postgres:5432/app?user=app_user&password=app_pw"
+      JWT_HS256_SECRET: ${JWT_HS256_SECRET}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./app:/app
+      - m2-cache:/root/.m2
+
+volumes:
+  poc_pg_data:
+  m2-cache:
