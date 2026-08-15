@@ -5,7 +5,7 @@
 > cada um. O segundo artigo (`como-o-spicedb-funciona-nesta-poc.md`)
 > mostra exatamente como isso tudo aparece no código desta POC.
 
-## Para começar: o problema, explicado como para uma criança
+## Para começar: o problema
 
 Imagine um prédio com um porteiro. Toda vez que alguém quer entrar, o
 porteiro precisa responder uma pergunta: "essa pessoa pode entrar
@@ -202,8 +202,23 @@ descrição da própria talk, um sistema fortemente orientado a atributos
 — na prática, um primo do ABAC, ainda que não fique claro publicamente
 se ele é implementado sobre o SpiceDB ou sobre outra base própria.
 
-**Duas ressalvas importantes de honestidade, que a pesquisa para este
-artigo deixou explícitas:**
+**Importante para não tirar uma conclusão maior do que os fatos
+sustentam:** PACS é um sistema **interno e proprietário** da Netflix —
+não é um produto, biblioteca ou serviço que exista fora da empresa.
+Diferente do SpiceDB, ninguém "adota" o PACS; a comparação útil aqui é
+entre **abordagens** (ReBAC vs. ABAC), não entre duas ferramentas
+concorrentes das quais dá pra escolher uma. E, mais importante ainda:
+**não existe fonte que confirme que a Netflix avaliou ReBAC para
+autorização de assinante e decidiu por ABAC/PACS no lugar.** A talk do
+PACS é de 2022; o artigo de Caveats é de 2023; e são tratados aqui como
+dois domínios diferentes (infraestrutura vs. assinante). É perfeitamente
+possível que o PACS simplesmente seja anterior à adoção do SpiceDB na
+empresa, ou pertença a um time totalmente diferente, sem que nunca tenha
+havido uma decisão consciente "ReBAC não serve aqui, vamos de ABAC". Não
+force essa leitura além do que as fontes garantem.
+
+**Outras duas ressalvas de honestidade, que a pesquisa para este artigo
+deixou explícitas:**
 
 1. Não existe fonte primária conectando PACS diretamente ao SpiceDB —
    são tratados aqui como **dois sistemas/domínios distintos** dentro
@@ -263,14 +278,45 @@ mais uma peça de infraestrutura distribuída e sensível a latência.
 
 ---
 
-## Amarrando tudo com esta POC
+## Amarrando tudo com esta POC: ReBAC é o encaixe certo aqui?
 
 Esta POC não está tentando replicar o PACS da Netflix (autorização de
-assinante em escala planetária) nem o caso de identidades de aplicação
-do artigo de Caveats — está testando o cenário mais simples e mais
-comum: **ReBAC puro**, sem atributos dinâmicos, para responder "este
-usuário pode ver este filme". É o degrau de entrada da mesma escada que
-a Netflix subiu até precisar de ABAC.
+assinante em escala planetária, que nem é um produto adotável — é
+sistema interno deles) nem o caso de identidades de aplicação do artigo
+de Caveats. Está testando o cenário mais simples e mais comum: **ReBAC
+puro**, sem atributos dinâmicos, para responder "este usuário pode ver
+este filme". O veredito, sem enfeitar:
+
+**Para o que esta POC modela hoje, ReBAC é um bom encaixe.** Plano de
+assinatura, produto avulso comprado, tag de conteúdo liberada, acesso
+direto — todos são **relações estáveis**: fatos que passam a existir
+quando um evento de negócio acontece (assinar, comprar, liberar) e
+continuam válidos até mudarem de novo. Isso não é um atributo que muda
+a cada requisição — é exatamente o tipo de dado que um grafo de relações
+foi desenhado para responder bem, com múltiplos caminhos para a mesma
+permissão (plano, produto avulso ou concessão direta) resolvidos de
+forma nativa. Não por acaso, um catálogo com planos por assinatura é um
+dos exemplos que a própria Authzed usa para demonstrar o SpiceDB.
+
+**Onde isso deixaria de ser suficiente:** se o problema real da empresa
+precisar de decisões que dependem de **atributos avaliados na hora** —
+licenciamento por região geográfica (que muda com acordos comerciais,
+não é uma relação fixa), sinais de fraude, tipo de dispositivo, ou
+janelas de tempo de uma promoção — aí ReBAC puro passa a forçar a
+barra: você teria que escrever (e manter atualizada) uma relação para
+cada combinação de atributo, em vez de avaliar a condição no momento da
+pergunta. **A resposta documentada para esse problema não é abandonar
+o SpiceDB por outra coisa — é o que a própria Netflix fez: estender o
+SpiceDB com Caveats** (a feature ABAC-dentro-do-ReBAC descrita acima).
+Não existe, nas fontes usadas aqui, nenhuma evidência de que a Netflix
+tenha avaliado ReBAC para autorização de assinante e o descartado em
+favor de um sistema totalmente diferente — essa é uma inferência forte
+demais para os fatos disponíveis, e este artigo evita fazê-la.
+
+Em resumo: **hoje, sem atributos dinâmicos no escopo, SpiceDB/ReBAC
+resolve bem o problema desta POC.** Se o escopo real crescer para
+incluir os atributos citados acima, o caminho com precedente
+documentado é adicionar Caveats, não trocar de abordagem.
 
 Ver `.docs/como-o-spicedb-funciona-nesta-poc.md` para como isso vira
 código, schema e tabelas, nesta implementação específica.
