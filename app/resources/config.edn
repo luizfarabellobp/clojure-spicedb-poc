@@ -1,0 +1,5 @@
+{:server  {:port #long #or [#env "PORT" "3000"]}
+ :spicedb {:endpoint      #or [#env "SPICEDB_ENDPOINT" "localhost:50051"]
+           :preshared-key #env "SPICEDB_PRESHARED_KEY"}
+ :db-app  {:jdbc-url #env "APP_DB_JDBC_URL"}
+ :auth    {:jwt-secret #env "JWT_HS256_SECRET"}}

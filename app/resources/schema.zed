@@ -1,0 +1,26 @@
+definition user {}
+
+definition plan {
+    relation subscriber: user
+    relation inherits: plan
+    permission is_member = subscriber + inherits->is_member
+}
+
+definition commercial_product {
+    relation grants_plan: plan
+    relation unlocks_tag: content_tag
+    relation buyer: user
+}
+
+definition content_tag {
+    relation allowed_product: commercial_product
+    relation allowed_plan: plan
+    permission has_access = allowed_plan->is_member + allowed_product->buyer
+}
+
+definition movie {
+    relation required_plan: plan
+    relation tag: content_tag
+    relation direct_viewer: user
+    permission view = (required_plan->is_member) + (tag->has_access) + direct_viewer
+}
