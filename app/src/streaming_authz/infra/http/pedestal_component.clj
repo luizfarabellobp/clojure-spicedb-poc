@@ -12,6 +12,7 @@
     (let [system {:spicedb-client spicedb-client :datasource (:datasource datasource)}
           service-map (-> {::http/routes (routes/routes system auth-config)
                             ::http/type :jetty
+                            ::http/host "0.0.0.0"
                             ::http/port port
                             ::http/join? false}
                            (http/default-interceptors)
