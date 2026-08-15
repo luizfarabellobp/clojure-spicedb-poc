@@ -24,16 +24,30 @@
    {:resource-type "commercial_product" :resource-id "promo_natal" :relation "buyer" :subject-type "user" :subject-id "alice"}
 
    {:resource-type "plan" :resource-id "medium" :relation "subscriber" :subject-type "user" :subject-id "bob"}
-   {:resource-type "movie" :resource-id "avatar_3" :relation "direct_viewer" :subject-type "user" :subject-id "bob"}])
+   {:resource-type "movie" :resource-id "avatar_3" :relation "direct_viewer" :subject-type "user" :subject-id "bob"}
+
+   ;; Exemplo de Caveat (ABAC dentro do ReBAC): esta relação por si só não
+   ;; concede nada — só vale se, no momento do CheckPermission, o contexto
+   ;; :user_region enviado bater com :allowed_regions gravado aqui. É a
+   ;; mesma relação, dois resultados possíveis, dependendo do atributo
+   ;; enviado na hora. Ver GET /movies/filme_regional/access?region=BR|US.
+   {:resource-type "movie" :resource-id "filme_regional" :relation "region_locked_viewer"
+    :subject-type "user" :subject-id "alice"
+    :caveat {:name "region_allowed" :context {:allowed_regions ["BR" "AR"]}}}])
 
 (def seed-movies
-  [{:id "grinch" :title "O Grinch" :synopsis "Um personagem rabugento tenta arruinar o Natal."}
-   {:id "duro_de_matar" :title "Duro de Matar" :synopsis "Um policial enfrenta terroristas em um arranha-céu."}
-   {:id "avatar_3" :title "Avatar 3" :synopsis "Uma nova aventura em Pandora."}])
+  [{:id "grinch" :title "O Grinch" :synopsis "Um personagem rabugento tenta arruinar o Natal."
+    :genre "Comédia" :release-year 2018 :duration-minutes 86}
+   {:id "duro_de_matar" :title "Duro de Matar" :synopsis "Um policial enfrenta terroristas em um arranha-céu."
+    :genre "Ação" :release-year 1988 :duration-minutes 132}
+   {:id "avatar_3" :title "Avatar 3" :synopsis "Uma nova aventura em Pandora."
+    :genre "Ficção Científica" :release-year 2025 :duration-minutes 190}
+   {:id "filme_regional" :title "Retratos do Sul" :synopsis "Documentário com distribuição restrita a alguns países."
+    :genre "Documentário" :release-year 2023 :duration-minutes 75}])
 
 (def seed-users
-  [{:id "alice" :email "alice@example.com" :display-name "Alice"}
-   {:id "bob" :email "bob@example.com" :display-name "Bob"}])
+  [{:id "alice" :email "alice@example.com" :display-name "Alice" :country "BR"}
+   {:id "bob" :email "bob@example.com" :display-name "Bob" :country "US"}])
 
 (defn seed! [spicedb-client datasource]
   (log/info "Applying SpiceDB schema")

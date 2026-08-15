@@ -2,6 +2,7 @@
   (:require [com.stuartsierra.component :as component]
             [io.pedestal.http :as http]
             [io.pedestal.http.body-params :as body-params]
+            [io.pedestal.http.route :as route]
             [streaming-authz.infra.http.routes :as routes]
             [clojure.tools.logging :as log]))
 
@@ -17,6 +18,7 @@
                             ::http/join? false}
                            (http/default-interceptors)
                            (update ::http/interceptors conj (body-params/body-params))
+                           (update ::http/interceptors conj route/query-params)
                            http/create-server
                            http/start)]
       (assoc this :server service-map)))

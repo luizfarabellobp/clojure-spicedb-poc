@@ -12,7 +12,9 @@
   (fn [request]
     (let [movie-id (get-in request [:path-params :id])
           user-id (get-in request [:identity :user-id])
-          allowed (movie-service/can-view? system {:user-id user-id :movie-id movie-id})]
+          region (get-in request [:query-params :region])
+          context (when region {:user_region region})
+          allowed (movie-service/can-view? system {:user-id user-id :movie-id movie-id} context)]
       (response/ok {:allowed allowed}))))
 
 (defn- available-movies [system]
@@ -22,10 +24,11 @@
 
 (defn- write-relationship [system]
   (fn [request]
-    (let [{:keys [resource-type resource-id relation subject-type subject-id]} (:json-params request)]
+    (let [{:keys [resource-type resource-id relation subject-type subject-id caveat]} (:json-params request)]
       (authz/write-relationships! (:spicedb-client system)
-        [{:resource-type resource-type :resource-id resource-id
-          :relation relation :subject-type subject-type :subject-id subject-id}])
+        [(cond-> {:resource-type resource-type :resource-id resource-id
+                  :relation relation :subject-type subject-type :subject-id subject-id}
+           caveat (assoc :caveat caveat))])
       (response/ok {:written true}))))
 
 (defn routes [system auth-config]

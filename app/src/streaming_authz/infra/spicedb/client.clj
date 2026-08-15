@@ -17,9 +17,11 @@
             RelationshipUpdate
             RelationshipUpdate$Operation
             Relationship
+            ContextualizedCaveat
             ObjectReference
             SubjectReference
-            Consistency]))
+            Consistency]
+           [com.google.protobuf Struct Value ListValue]))
 
 (defn- object-ref ^ObjectReference [type id]
   (-> (ObjectReference/newBuilder)
@@ -36,6 +38,33 @@
   (-> (Consistency/newBuilder)
       (.setFullyConsistent true)
       (.build)))
+
+(defn- clj-value->pb ^Value [v]
+  (cond
+    (string? v)     (-> (Value/newBuilder) (.setStringValue v) (.build))
+    (number? v)     (-> (Value/newBuilder) (.setNumberValue (double v)) (.build))
+    (sequential? v) (let [lv (ListValue/newBuilder)]
+                      (doseq [item v] (.addValues lv (clj-value->pb item)))
+                      (-> (Value/newBuilder) (.setListValue (.build lv)) (.build)))
+    :else (throw (ex-info "tipo não suportado no contexto do caveat" {:value v}))))
+
+(defn- clj-map->struct ^Struct [m]
+  (let [builder (Struct/newBuilder)]
+    (doseq [[k v] m] (.putFields builder (name k) (clj-value->pb v)))
+    (.build builder)))
+
+(defn- caveat->pb ^ContextualizedCaveat [{:keys [name context]}]
+  (let [b (-> (ContextualizedCaveat/newBuilder) (.setCaveatName name))]
+    (when context (.setContext b (clj-map->struct context)))
+    (.build b)))
+
+(defn- relationship->pb ^Relationship [{:keys [resource-type resource-id relation subject-type subject-id caveat]}]
+  (let [b (-> (Relationship/newBuilder)
+              (.setResource (object-ref resource-type resource-id))
+              (.setRelation relation)
+              (.setSubject (subject-ref subject-type subject-id)))]
+    (when caveat (.setOptionalCaveat b (caveat->pb caveat)))
+    (.build b)))
 
 (defrecord SpiceDBClient [endpoint preshared-key channel permissions-stub schema-stub]
   component/Lifecycle
@@ -66,27 +95,22 @@
 
   (write-relationships! [_ tuples]
     (let [builder (WriteRelationshipsRequest/newBuilder)]
-      (doseq [{:keys [resource-type resource-id relation subject-type subject-id]} tuples]
+      (doseq [tuple tuples]
         (.addUpdates builder
           (-> (RelationshipUpdate/newBuilder)
               (.setOperation RelationshipUpdate$Operation/OPERATION_TOUCH)
-              (.setRelationship
-                (-> (Relationship/newBuilder)
-                    (.setResource (object-ref resource-type resource-id))
-                    (.setRelation relation)
-                    (.setSubject (subject-ref subject-type subject-id))
-                    (.build)))
+              (.setRelationship (relationship->pb tuple))
               (.build))))
       (.writeRelationships permissions-stub (.build builder))))
 
-  (check-permission [_ {:keys [resource-type resource-id permission subject-id]}]
-    (let [response (.checkPermission permissions-stub
-                     (-> (CheckPermissionRequest/newBuilder)
-                         (.setResource (object-ref resource-type resource-id))
-                         (.setPermission permission)
-                         (.setSubject (subject-ref "user" subject-id))
-                         (.setConsistency (fully-consistent))
-                         (.build)))]
+  (check-permission [_ {:keys [resource-type resource-id permission subject-id context]}]
+    (let [req (cond-> (CheckPermissionRequest/newBuilder)
+                true    (-> (.setResource (object-ref resource-type resource-id))
+                            (.setPermission permission)
+                            (.setSubject (subject-ref "user" subject-id))
+                            (.setConsistency (fully-consistent)))
+                context (.setContext (clj-map->struct context)))
+          response (.checkPermission permissions-stub (.build req))]
       (= (.getPermissionship response)
          CheckPermissionResponse$Permissionship/PERMISSIONSHIP_HAS_PERMISSION)))
 

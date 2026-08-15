@@ -14,16 +14,23 @@
    :medium {:users 200  :movies 80  :relations-per-user 5}
    :large  {:users 2000 :movies 300 :relations-per-user 8}})
 
+(def ^:private countries ["BR" "US" "AR" "PT" "MX"])
+(def ^:private genres ["Ação" "Comédia" "Drama" "Ficção Científica" "Documentário" "Terror"])
+
 (defn- gen-users [n]
   (mapv (fn [i] {:id (str "gen-user-" i)
                  :email (str "gen-user-" i "@example.com")
-                 :display-name (str "Generated User " i)})
+                 :display-name (str "Generated User " i)
+                 :country (nth countries (mod i (count countries)))})
         (range n)))
 
 (defn- gen-movies [n]
   (mapv (fn [i] {:id (str "gen-movie-" i)
                  :title (str "Generated Movie " i)
-                 :synopsis "Filme gerado para teste de volume."})
+                 :synopsis "Filme gerado para teste de volume."
+                 :genre (nth genres (mod i (count genres)))
+                 :release-year (+ 1990 (mod i 35))
+                 :duration-minutes (+ 75 (mod (* i 7) 90))})
         (range n)))
 
 (defn- sample-distinct [^java.util.Random rng movies n]

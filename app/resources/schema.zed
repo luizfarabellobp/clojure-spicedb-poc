@@ -18,9 +18,18 @@ definition content_tag {
     permission has_access = allowed_plan->is_member + allowed_product->buyer
 }
 
+// Caveat = condição avaliada em tempo de checagem (ABAC), não uma
+// relação pré-escrita. `allowed_regions` fica gravado junto com a
+// tupla no momento da escrita; `user_region` só chega no momento do
+// CheckPermission, como atributo "vivo" da requisição.
+caveat region_allowed(user_region string, allowed_regions list<string>) {
+    user_region in allowed_regions
+}
+
 definition movie {
     relation required_plan: plan
     relation tag: content_tag
     relation direct_viewer: user
-    permission view = (required_plan->is_member) + (tag->has_access) + direct_viewer
+    relation region_locked_viewer: user with region_allowed
+    permission view = (required_plan->is_member) + (tag->has_access) + direct_viewer + region_locked_viewer
 }
