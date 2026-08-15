@@ -155,6 +155,11 @@ documentação: uma relação `viewer` que só vale `user with
 has_valid_ip`, onde `has_valid_ip` checa se o IP de quem pergunta está
 dentro de uma faixa permitida.
 
+Esta POC implementa o mesmo padrão, com uma condição de região
+geográfica em vez de IP — testado ao vivo, não só citado. Ver
+`.docs/como-o-spicedb-funciona-nesta-poc.md`, seção "Caveats na
+prática".
+
 Isso não foi um capricho de arquitetura — **foi a Netflix que
 patrocinou o desenvolvimento dessa feature**, e contou por quê, num
 artigo público:
@@ -282,41 +287,52 @@ mais uma peça de infraestrutura distribuída e sensível a latência.
 
 Esta POC não está tentando replicar o PACS da Netflix (autorização de
 assinante em escala planetária, que nem é um produto adotável — é
-sistema interno deles) nem o caso de identidades de aplicação do artigo
-de Caveats. Está testando o cenário mais simples e mais comum: **ReBAC
-puro**, sem atributos dinâmicos, para responder "este usuário pode ver
-este filme". O veredito, sem enfeitar:
+sistema interno deles) nem a escala do caso de identidades de aplicação
+do artigo de Caveats. Testa o cenário mais comum de entitlement — plano
+de assinatura, produto avulso, tag de conteúdo, concessão direta — **e
+também** já testa, num exemplo pequeno e real (não só citado), o
+caminho de saída quando isso não basta: atributo avaliado na hora, via
+Caveats. O veredito, sem enfeitar:
 
-**Para o que esta POC modela hoje, ReBAC é um bom encaixe.** Plano de
-assinatura, produto avulso comprado, tag de conteúdo liberada, acesso
+**Para o núcleo do que esta POC modela, ReBAC é um bom encaixe.** Plano
+de assinatura, produto avulso comprado, tag de conteúdo liberada, acesso
 direto — todos são **relações estáveis**: fatos que passam a existir
 quando um evento de negócio acontece (assinar, comprar, liberar) e
 continuam válidos até mudarem de novo. Isso não é um atributo que muda
 a cada requisição — é exatamente o tipo de dado que um grafo de relações
 foi desenhado para responder bem, com múltiplos caminhos para a mesma
-permissão (plano, produto avulso ou concessão direta) resolvidos de
-forma nativa. Não por acaso, um catálogo com planos por assinatura é um
-dos exemplos que a própria Authzed usa para demonstrar o SpiceDB.
+permissão resolvidos de forma nativa. Não por acaso, um catálogo com
+planos por assinatura é um dos exemplos que a própria Authzed usa para
+demonstrar o SpiceDB.
 
-**Onde isso deixaria de ser suficiente:** se o problema real da empresa
-precisar de decisões que dependem de **atributos avaliados na hora** —
-licenciamento por região geográfica (que muda com acordos comerciais,
-não é uma relação fixa), sinais de fraude, tipo de dispositivo, ou
-janelas de tempo de uma promoção — aí ReBAC puro passa a forçar a
-barra: você teria que escrever (e manter atualizada) uma relação para
-cada combinação de atributo, em vez de avaliar a condição no momento da
-pergunta. **A resposta documentada para esse problema não é abandonar
-o SpiceDB por outra coisa — é o que a própria Netflix fez: estender o
-SpiceDB com Caveats** (a feature ABAC-dentro-do-ReBAC descrita acima).
-Não existe, nas fontes usadas aqui, nenhuma evidência de que a Netflix
-tenha avaliado ReBAC para autorização de assinante e o descartado em
-favor de um sistema totalmente diferente — essa é uma inferência forte
-demais para os fatos disponíveis, e este artigo evita fazê-la.
+**Onde isso deixaria de ser suficiente — e o que fizemos a respeito:**
+se o problema real da empresa precisar de decisões que dependem de
+**atributos avaliados na hora** — licenciamento por região geográfica
+(que muda com acordos comerciais, não é uma relação fixa), sinais de
+fraude, tipo de dispositivo, ou janelas de tempo de uma promoção — ReBAC
+puro passa a forçar a barra: você teria que escrever (e manter
+atualizada) uma relação para cada combinação de atributo, em vez de
+avaliar a condição no momento da pergunta. A resposta documentada para
+esse problema não é abandonar o SpiceDB por outra coisa — é o que a
+própria Netflix fez: estender o SpiceDB com Caveats. **Esta POC já
+implementou e testou ao vivo exatamente esse caminho de saída**: uma
+relação `movie.region_locked_viewer`, restrita por região geográfica,
+onde a mesma tupla gravada uma única vez responde `true` ou `false`
+dependendo do atributo enviado no momento da checagem — ver
+`.docs/como-o-spicedb-funciona-nesta-poc.md`, seção "Caveats na
+prática", para o schema, o código e os comandos `curl` que provam isso
+rodando. Não existe, nas fontes usadas aqui, nenhuma evidência de que a
+Netflix tenha avaliado ReBAC para autorização de assinante e o
+descartado em favor de um sistema totalmente diferente — essa é uma
+inferência forte demais para os fatos disponíveis, e este artigo evita
+fazê-la.
 
-Em resumo: **hoje, sem atributos dinâmicos no escopo, SpiceDB/ReBAC
-resolve bem o problema desta POC.** Se o escopo real crescer para
-incluir os atributos citados acima, o caminho com precedente
-documentado é adicionar Caveats, não trocar de abordagem.
+Em resumo: **SpiceDB/ReBAC resolve bem o núcleo de entitlement desta
+POC, e o caminho de evolução para atributo dinâmico (Caveats) não é
+mais só teoria — já foi implementado e verificado aqui.** Se o escopo
+real da empresa precisar desses atributos, o caminho com precedente
+documentado (Netflix) e agora também com precedente próprio (esta POC)
+é estender com Caveats, não trocar de abordagem.
 
 Ver `.docs/como-o-spicedb-funciona-nesta-poc.md` para como isso vira
 código, schema e tabelas, nesta implementação específica.

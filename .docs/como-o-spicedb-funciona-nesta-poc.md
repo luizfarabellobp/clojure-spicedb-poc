@@ -47,13 +47,24 @@ explicação daqui pra frente:
   (ex.: uma promoção de Natal).
 - **`content_tag`** — uma etiqueta de conteúdo (ex.: "filmes natalinos"),
   que pode ser liberada por mais de um caminho.
-- **`movie`** — o recurso final que alguém quer acessar.
+- **`movie`** — o recurso final que alguém quer acessar. Tem uma
+  permissão (`view`) e quatro jeitos de chegar a ela — por plano, por
+  tag, por concessão direta, ou (o quarto, mais novo) por **caveat**
+  (ver a seção dedicada mais abaixo).
 
 E duas tabelas "normais" de banco relacional, que não têm nada de
 especial — são só metadados descritivos:
 
-- **`movies`** (`id`, `title`, `synopsis`) — o catálogo, o que existe.
-- **`users`** (`id`, `email`, `display_name`) — quem existe.
+- **`movies`** (`id`, `title`, `synopsis`, `genre`, `release_year`,
+  `duration_minutes`) — o catálogo: o que existe e como se descreve,
+  não quem pode ver.
+- **`users`** (`id`, `email`, `display_name`, `country`, `created_at`)
+  — quem existe e como se descreve. Repare: `country` aqui é só um
+  **dado de perfil** (o país que o usuário informou/tem cadastrado) —
+  não é usado automaticamente por nenhuma checagem de autorização. O
+  exemplo de Caveat mais abaixo usa uma região enviada explicitamente
+  na requisição, não esse campo — a diferença importa, e é explicada
+  lá.
 
 O pulo do gato: **nem `movies` nem `users` guardam quem pode acessar o
 quê.** Essa informação — o coração da autorização — não é uma coluna
@@ -121,14 +132,16 @@ definition movie {
     relation required_plan: plan
     relation tag: content_tag
     relation direct_viewer: user
-    permission view = (required_plan->is_member) + (tag->has_access) + direct_viewer
+    relation region_locked_viewer: user with region_allowed
+    permission view = (required_plan->is_member) + (tag->has_access) + direct_viewer + region_locked_viewer
 }
 ```
 
 Ler essa última linha em português: "alguém pode `view` (ver) um filme
 se: (a) ele é membro do plano exigido pelo filme, OU (b) ele tem acesso
 à tag do filme (por outro caminho, tipo produto avulso), OU (c) ele foi
-liberado diretamente para aquele filme." Três caminhos, um só resultado.
+liberado diretamente para aquele filme, OU (d) ele passa na condição de
+região (explicada na próxima seção)." Quatro caminhos, um só resultado.
 Isso é o que se chama de **múltiplos caminhos para a mesma permissão** —
 um dos padrões centrais do ReBAC (ver o outro artigo para a teoria).
 
@@ -141,6 +154,80 @@ contrário. Modelar autorização como grafo não elimina a possibilidade de
 erro — troca "erro escondido num `if`" por "erro visível e testável
 numa tupla de relação", o que já é uma vitória, mas exige entender a
 direção da seta.
+
+---
+
+## Caveats na prática: o mesmo dado, duas respostas diferentes
+
+O artigo geral (`o-que-e-spicedb-rebac-abac.md`) explica Caveats na
+teoria — a feature que a própria Netflix patrocionou pra ter ABAC dentro
+do SpiceDB. Aqui está o exemplo rodando de verdade nesta POC, não só
+citado.
+
+Primeiro, uma condição, declarada no schema:
+
+```zed
+caveat region_allowed(user_region string, allowed_regions list<string>) {
+    user_region in allowed_regions
+}
+```
+
+Ela recebe dois valores: `allowed_regions` é gravado **junto com a
+relação**, no momento em que ela é escrita (é um dado estático, como
+qualquer outra tupla). `user_region` **não é gravado em lugar nenhum**
+— ele só existe no instante da pergunta, como parâmetro da própria
+chamada de `CheckPermission`. É essa diferença de "quando o dado chega"
+que separa ABAC de ReBAC.
+
+Na seed, o filme `filme_regional` recebe essa relação para a `alice`,
+liberado só para Brasil e Argentina:
+
+```clojure
+{:resource-type "movie" :resource-id "filme_regional" :relation "region_locked_viewer"
+ :subject-type "user" :subject-id "alice"
+ :caveat {:name "region_allowed" :context {:allowed_regions ["BR" "AR"]}}}
+```
+
+E a rota HTTP repassa a região da requisição (`?region=`) como o
+atributo vivo, no momento da checagem — não lê isso de nenhuma coluna
+do Postgres, é passado explicitamente a cada chamada, simulando o que
+num sistema real viria de geolocalização por IP:
+
+```clojure
+(let [region (get-in request [:query-params :region])
+      context (when region {:user_region region})]
+  (movie-service/can-view? system {:user-id user-id :movie-id movie-id} context))
+```
+
+Resultado testado ao vivo, mesma relação gravada uma única vez:
+
+```bash
+curl "http://localhost:3000/movies/filme_regional/access" \
+  -H "Authorization: Bearer $ALICE_JWT"                       # {"allowed":false} — sem região, fail-closed
+curl "http://localhost:3000/movies/filme_regional/access?region=BR" \
+  -H "Authorization: Bearer $ALICE_JWT"                       # {"allowed":true}
+curl "http://localhost:3000/movies/filme_regional/access?region=US" \
+  -H "Authorization: Bearer $ALICE_JWT"                       # {"allowed":false}
+```
+
+Note o "sem região, fail-closed": quando o contexto necessário pro
+caveat não chega, o SpiceDB não consegue provar que a condição é
+verdadeira — e por padrão, se `check-permission` não recebe uma resposta
+definitivamente positiva (`PERMISSIONSHIP_HAS_PERMISSION`), ela retorna
+`false`. Isso vale tanto para "negado" quanto para "não deu pra saber"
+— o mesmo princípio de segurança já usado no resto da POC (negar por
+padrão, nunca assumir acesso).
+
+Também dá pra escrever uma relação com caveat em runtime, pela mesma
+rota que já existia:
+
+```bash
+curl -X POST http://localhost:3000/relationships \
+  -H "Authorization: Bearer $ALICE_JWT" -H "Content-Type: application/json" \
+  -d '{"resource-type":"movie","resource-id":"filme_regional","relation":"region_locked_viewer",
+       "subject-type":"user","subject-id":"bob",
+       "caveat":{"name":"region_allowed","context":{"allowed_regions":["PT"]}}}'
+```
 
 ---
 
@@ -223,6 +310,9 @@ make mint-token USER_ID=bob
 curl http://localhost:3000/movies/grinch/access -H "Authorization: Bearer <token>"
 curl http://localhost:3000/available-movies -H "Authorization: Bearer <token>"
 
+curl "http://localhost:3000/movies/filme_regional/access?region=BR" -H "Authorization: Bearer <token>"  # Caveat: true
+curl "http://localhost:3000/movies/filme_regional/access?region=US" -H "Authorization: Bearer <token>"  # Caveat: false
+
 make seed PROFILE=medium   # popula com volume (200 usuários, 80 filmes)
 make bench PROFILE=medium  # mede latência das checagens de permissão
 
@@ -242,9 +332,14 @@ POC dá para essa decisão:
   vez de espalhada; mudar uma relação (ex.: dar acesso avulso a um
   filme) é uma chamada de API, não um deploy; a separação
   autenticação/autorização fica explícita na arquitetura, não só na
-  cabeça de quem escreveu o código.
+  cabeça de quem escreveu o código; e — testado ao vivo nesta POC, não
+  só documentado — dá pra evoluir de ReBAC puro para ABAC-dentro-do-ReBAC
+  (Caveats) sem trocar de motor nem reescrever o que já existe, quando o
+  problema real precisar de atributos avaliados na hora (região,
+  dispositivo, fraude).
 - **Custo a considerar:** existe uma peça nova rodando (o próprio
   SpiceDB), uma linguagem nova para aprender (`zed`), e — como o bug da
-  direção do `inherits` mostrou — a modelagem em grafo tem seus próprios
-  jeitos de errar, só que mais visíveis e testáveis do que um `if`
-  perdido.
+  direção do `inherits` (e, depois, o bug do `route/query-params` sendo
+  chamado como função) mostraram — a modelagem em grafo e a integração
+  gRPC têm seus próprios jeitos de errar, só que mais visíveis e
+  testáveis do que um `if` perdido.

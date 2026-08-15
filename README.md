@@ -21,10 +21,11 @@ dois modelos, quando precisou autorizar identidades de infraestrutura
 baseadas em atributos dinâmicos — um caso documentado publicamente e
 citado com fonte no artigo completo.
 
-Esta POC testa o cenário mais simples dessa mesma família: ReBAC puro,
-para modelar planos de assinatura, produtos avulsos e tags de conteúdo de
-um catálogo de filmes, com Postgres compartilhado entre os dados de
-negócio da aplicação e o datastore interno do SpiceDB.
+Esta POC testa o núcleo dessa família — ReBAC puro, para modelar planos
+de assinatura, produtos avulsos e tags de conteúdo — **e também
+implementa e testa ao vivo um exemplo real de Caveats** (restrição por
+região geográfica), com Postgres compartilhado entre os dados de negócio
+da aplicação e o datastore interno do SpiceDB.
 
 **Leitura completa, com todas as referências e o passo a passo do código:**
 - [`.docs/o-que-e-spicedb-rebac-abac.md`](.docs/o-que-e-spicedb-rebac-abac.md) — Zanzibar, ReBAC, ABAC, arquitetura do SpiceDB e o caso Netflix, com fontes.
@@ -110,6 +111,30 @@ curl -s -X POST http://localhost:3000/relationships \
   -H "Authorization: Bearer $ALICE_JWT" -H "Content-Type: application/json" \
   -d '{"resource-type":"movie","resource-id":"avatar_3","relation":"direct_viewer","subject-type":"user","subject-id":"alice"}'
 ```
+
+## Caveats (ABAC dentro do ReBAC) — atributo avaliado na hora
+
+O filme `filme_regional` só é liberado pra `alice` dentro de uma região
+(`BR`/`AR`), avaliada em tempo real a cada checagem — não é uma coluna
+fixa em tabela nenhuma:
+
+```bash
+curl -s "http://localhost:3000/movies/filme_regional/access?region=BR" -H "Authorization: Bearer $ALICE_JWT"  # {"allowed":true}
+curl -s "http://localhost:3000/movies/filme_regional/access?region=US" -H "Authorization: Bearer $ALICE_JWT"  # {"allowed":false}
+curl -s "http://localhost:3000/movies/filme_regional/access" -H "Authorization: Bearer $ALICE_JWT"            # {"allowed":false} — sem região, nega por padrão
+```
+
+Também dá pra conceder uma relação com Caveat em runtime (não só via seed):
+
+```bash
+curl -s -X POST http://localhost:3000/relationships \
+  -H "Authorization: Bearer $ALICE_JWT" -H "Content-Type: application/json" \
+  -d '{"resource-type":"movie","resource-id":"filme_regional","relation":"region_locked_viewer",
+       "subject-type":"user","subject-id":"bob",
+       "caveat":{"name":"region_allowed","context":{"allowed_regions":["PT"]}}}'
+```
+
+Ver `.docs/como-o-spicedb-funciona-nesta-poc.md`, seção "Caveats na prática", para a explicação completa.
 
 ## Seed volumétrica e performance
 
