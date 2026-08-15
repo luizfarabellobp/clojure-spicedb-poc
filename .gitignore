@@ -5,13 +5,15 @@ ignored/
 
 # ============================================================
 # POC independente do template/empresa — esta POC não versiona as
-# ferramentas internas do coding assistant nem os specs/docs corporativos
+# ferramentas internas do coding assistant nem os specs corporativos
 # herdados do template. Decisão explícita do desenvolvedor: o repo público
 # desta POC não deve carregar nenhum artefato ligado à empresa.
+# .docs/ passou a conter documentação própria da POC (não mais o template
+# da empresa) e voltou a ser versionado — ver commit que reescreveu esses
+# arquivos.
 # ============================================================
 .claude/
 .specs/
-.docs/
 
 # ============================================================
 # Ferramentas de SDD (Spec-Driven Development, ver CLAUDE.md

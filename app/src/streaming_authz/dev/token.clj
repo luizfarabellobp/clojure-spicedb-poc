@@ -1,4 +1,5 @@
 (ns streaming-authz.dev.token
+  (:refer-clojure :exclude [run!])
   (:require [buddy.sign.jwt :as jwt]
             [streaming-authz.config :as config]))
 
