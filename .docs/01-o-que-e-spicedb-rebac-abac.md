@@ -157,28 +157,42 @@ ainda não tinha sido escrita a tempo. A saída foi deixar essa parte ser
 calculada na hora (ABAC), dentro do mesmo SpiceDB — daí o nome do
 artigo, "ABAC on SpiceDB".
 
-### E os assinantes da Netflix? Isso é outro sistema, separado
+### E o sistema de assinantes da Netflix (PACS)? Não é evidência contra o SpiceDB
 
-Fácil de confundir: o que foi descrito acima é sobre autorizar
-**máquinas**, não sobre "a Alice pode assistir a este filme". Pra
-autorizar **assinantes**, a Netflix usa um sistema diferente, chamado
-publicamente de **PACS**:
+O caso descrito acima é sobre autorizar **máquinas**, não sobre "a Alice
+pode assistir a este filme". Para autorizar **assinantes**, a Netflix
+usa (ou usava, na época da talk) um sistema próprio, apresentado
+publicamente como **PACS**:
 
 > **"Authorization at Netflix Scale"** — Travis Nelson (Netflix, time
 > AIM), QCon Plus 2022.
 > <https://www.infoq.com/presentations/authorization-scalability/>
 
 O PACS olha pra coisas como status da conta, plano, tipo de aparelho,
-sinais de fraude e localização — bem parecido com ABAC. Mas não há
-confirmação pública de que ele use o SpiceDB por baixo.
+sinais de fraude e localização — bem parecido com ABAC. Vale deixar bem
+claro o que isso significa e o que **não** significa:
 
-**Duas coisas importantes pra não concluir mais do que se sabe:**
-1. Não existe fonte que ligue o PACS ao SpiceDB — tratamos aqui como
-   dois sistemas separados (um pra máquina, outro pra assinante). E não
-   existe prova de que a Netflix tenha testado ReBAC pros assinantes e
-   trocado por ABAC — a talk do PACS é de 2022, o artigo de Caveats é
-   de 2023, e dá pra explicar isso de um jeito bem mais simples: os dois
-   podem ser projetos de times diferentes, que nunca se cruzaram.
+**O que significa:** a Netflix já tinha (ou construiu) um sistema
+próprio pra esse problema, por razões que não são públicas — pode ser
+histórico da empresa, decisão de outro time, escala específica deles,
+ou qualquer coisa que as fontes aqui não confirmam.
+
+**O que não significa:** que o SpiceDB seria inadequado pra resolver
+"este assinante pode acessar este conteúdo". Não existe nada nas fontes
+sugerindo isso — muito pelo contrário: plano, compra avulsa, tag de
+conteúdo e concessão direta (a resposta clássica de ReBAC, com múltiplos
+caminhos pra mesma permissão) são exatamente o tipo de regra que esse
+problema costuma ter, e é exatamente isso que esta POC modela e
+verifica funcionando. A existência do PACS não é um voto contra o
+ReBAC — é só um dado sobre o que a Netflix já tinha, numa época
+específica, sem ligação comprovada com o SpiceDB.
+
+Duas ressalvas pra não concluir mais do que as fontes garantem:
+1. Não existe fonte que ligue o PACS ao SpiceDB, nem prova de que a
+   Netflix tenha testado ReBAC pra assinantes e trocado por ABAC — a
+   talk do PACS é de 2022, o artigo de Caveats é de 2023, e a explicação
+   mais simples é que são projetos de times diferentes, que nunca se
+   cruzaram.
 2. A sigla PACS aparece com "significados" diferentes em sites de
    terceiros, sem confirmação oficial — por isso usamos só a sigla
    aqui. O exemplo de "compartilhar conta entre membros da casa" às
