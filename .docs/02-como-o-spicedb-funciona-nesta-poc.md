@@ -1,137 +1,114 @@
-# Como o SpiceDB funciona nesta POC
+# Implementação do SpiceDB nesta POC
 
-> Artigo 2 de 4. O primeiro (`01-o-que-e-spicedb-rebac-abac.md`) explica
-> os conceitos gerais — ReBAC, ABAC, Zanzibar, o caso da Netflix. Este
-> aqui é o "olha o motor por dentro": explica exatamente o que acontece
-> nesta POC específica, arquivo por arquivo, tabela por tabela. Os
-> próximos explicam os arquivos de configuração (3) e o formato de
-> armazenamento no Postgres com exemplos reais (4). A collection do
-> Postman (`spicedb-poc.postman_collection.json`) tem os cenários
-> prontos pra testar.
+> Artigo 2 de 4. O artigo 1 trata dos fundamentos conceituais (ReBAC,
+> ABAC, Zanzibar, caso Netflix). Este descreve a implementação concreta
+> nesta POC — schema, código, fluxo de requisição e o exemplo de
+> Caveats verificado no repositório. Os artigos seguintes tratam dos
+> arquivos de configuração (3) e do formato de armazenamento no
+> Postgres (4). A collection do Postman
+> (`spicedb-poc.postman_collection.json`) reproduz os cenários descritos
+> aqui.
 
-## O problema que esta POC tenta resolver
+## Problema modelado
 
-Imagine um serviço de streaming. Ele já tem um banco de dados com usuários e
-filmes — isso nunca foi problema. O problema é outra pergunta, que parece
-simples mas não é: **"este usuário específico pode assistir a este filme
-específico, agora?"**
+Um serviço de streaming típico já possui um banco de dados de usuários
+e catálogo — essa parte não constitui dificuldade. A dificuldade está em
+responder, de forma consistente, à pergunta "este usuário pode acessar
+este título, agora?". A implementação convencional distribui essa
+lógica pelo código de aplicação (uma condição por plano, uma por compra
+avulsa, uma por promoção, uma por concessão excepcional), o que reduz a
+auditabilidade da regra de acesso agregada.
 
-Hoje, a resposta a essa pergunta normalmente mora espalhada pelo código:
-um `if` aqui checando o plano do usuário, outro ali checando se ele
-comprou aquele filme avulso, outro checando se é um filme liberado por
-uma promoção sazonal, outro ainda para o caso especial de alguém que
-ganhou acesso de cortesia. Cada regra nova de acesso vira mais um `if`
-espalhado, e ninguém consegue responder com confiança "quem, hoje, pode
-ver o quê" sem ler (e entender) todo esse código.
-
-Essa POC existe para testar uma resposta diferente: **e se "quem pode
-acessar o quê" não fosse uma pergunta que o código respondesse
-calculando na hora, e sim uma pergunta que um banco de dados
-especializado em relações já soubesse responder, porque essas relações
-estão todas escritas nele, de um jeito só?**
-
-Esse banco especializado é o SpiceDB. A pergunta que a POC precisa
-responder não é "SpiceDB funciona tecnicamente" (isso qualquer
-documentação garante) — é: **esse jeito de modelar autorização como um
-grafo de relações é mais claro, mais seguro e mais fácil de evoluir do
-que a alternativa de espalhar `if`s pelo código?** O resto deste artigo
-mostra como a POC foi montada para responder isso.
+Esta POC testa uma alternativa: tratar "quem pode acessar o quê" como
+uma consulta a um sistema especializado em relações, com a regra
+declarada uma única vez, em vez de recalculada a cada trecho de código
+que a invoca. A questão de interesse não é se o SpiceDB opera
+tecnicamente — isso está estabelecido —, mas se a modelagem por grafo de
+relações resulta em regra de acesso mais auditável e evolutiva do que a
+alternativa distribuída.
 
 ---
 
-## O "elenco de personagens" desta POC
+## Entidades do domínio
 
-Antes do código, vale nomear as peças, porque elas se repetem em toda
-explicação daqui pra frente:
+- **`user`** — usuário (`alice`, `bob`).
+- **`plan`** — plano de assinatura (`basic`, `medium`, `premium`), em
+  ordem crescente de acesso.
+- **`commercial_product`** — produto adquirido avulsamente, fora do
+  plano (ex.: promoção sazonal).
+- **`content_tag`** — categoria de conteúdo, liberável por mais de um
+  caminho.
+- **`movie`** — recurso final. A permissão `view` é satisfeita por
+  quatro vias: plano, tag, concessão direta, ou condição de Caveat
+  (detalhada adiante).
 
-- **`user`** — uma pessoa (`alice`, `bob`).
-- **`plan`** — um plano de assinatura (`basic`, `medium`, `premium`),
-  organizados em ordem crescente de acesso.
-- **`commercial_product`** — algo que se compra avulso, fora do plano
-  (ex.: uma promoção de Natal).
-- **`content_tag`** — uma etiqueta de conteúdo (ex.: "filmes natalinos"),
-  que pode ser liberada por mais de um caminho.
-- **`movie`** — o recurso final que alguém quer acessar. Tem uma
-  permissão (`view`) e quatro jeitos de chegar a ela — por plano, por
-  tag, por concessão direta, ou (o quarto, mais novo) por **caveat**
-  (ver a seção dedicada mais abaixo).
-
-E duas tabelas "normais" de banco relacional, que não têm nada de
-especial — são só metadados descritivos:
+Duas tabelas relacionais convencionais complementam o modelo, sem
+participar da decisão de autorização:
 
 - **`movies`** (`id`, `title`, `synopsis`, `genre`, `release_year`,
-  `duration_minutes`) — o catálogo: o que existe e como se descreve,
-  não quem pode ver.
+  `duration_minutes`) — metadados de catálogo.
 - **`users`** (`id`, `email`, `display_name`, `country`, `created_at`)
-  — quem existe e como se descreve. Repare: `country` aqui é só um
-  **dado de perfil** (o país que o usuário informou/tem cadastrado) —
-  não é usado automaticamente por nenhuma checagem de autorização. O
-  exemplo de Caveat mais abaixo usa uma região enviada explicitamente
-  na requisição, não esse campo — a diferença importa, e é explicada
-  lá.
+  — metadados de perfil. `country` é um atributo de cadastro, não
+  utilizado por nenhuma checagem de autorização — o exemplo de Caveat
+  descrito adiante recebe a região como parâmetro explícito da
+  requisição, não a partir desta coluna; a distinção é relevante e
+  retomada na seção correspondente.
 
-O pulo do gato: **nem `movies` nem `users` guardam quem pode acessar o
-quê.** Essa informação — o coração da autorização — não é uma coluna
-numa tabela relacional. Ela é um grafo de relações, e vive inteiramente
-dentro do SpiceDB.
+Nem `movies` nem `users` armazenam informação de autorização: essa
+informação reside inteiramente no grafo de relações do SpiceDB.
 
 ---
 
-## Onde cada dado mora — e por que separado
+## Separação de armazenamento
 
-A POC roda com **um único servidor Postgres**, mas com **duas databases
-isoladas dentro dele**, cada uma com seu próprio usuário/senha, sem
-permissão de acessar a database da outra:
+A POC utiliza uma única instância de Postgres com duas databases
+isoladas, cada uma com credencial própria e sem privilégio de conexão
+cruzada:
 
 ```mermaid
 graph TB
     subgraph PG["Um servidor Postgres"]
         subgraph DBAPP["database: app"]
-            T1["users (quem existe)"]
-            T2["movies (o que existe)"]
+            T1["users"]
+            T2["movies"]
         end
         subgraph DBSD["database: spicedb"]
-            T3["relation_tuple (quem se relaciona com o quê)"]
-            T4["namespace_config (o schema.zed, versionado)"]
-            T5["... outras tabelas internas do SpiceDB"]
+            T3["relation_tuple"]
+            T4["namespace_config"]
+            T5["... demais tabelas internas"]
         end
     end
-    R1["role: app_user"] -->|só consegue entrar aqui| DBAPP
-    R2["role: spicedb_user"] -->|só consegue entrar aqui| DBSD
+    R1["role: app_user"] -->|CONNECT| DBAPP
+    R2["role: spicedb_user"] -->|CONNECT| DBSD
 ```
 
-Por que separar assim, em vez de um Postgres só com tudo junto?
+Três motivações justificam a separação, em vez de uma única database
+compartilhada:
 
-1. **O SpiceDB é dono das próprias tabelas.** As tabelas dentro da
-   database `spicedb` — vimos nomes reais como `relation_tuple`,
-   `namespace_config`, `caveat`, `relation_tuple_transaction` rodando
-   durante a migration desta POC (estrutura e exemplos de linha reais em
-   `.docs/04-como-o-spicedb-guarda-dados-no-postgres.md`) — são geridas
-   inteiramente pelo binário
-   do SpiceDB (`spicedb migrate head`). Ninguém no nosso código Clojure
-   faz `SELECT` nelas. É "propriedade privada" do SpiceDB, e mexer nelas
-   por fora seria como editar o arquivo de um banco de dados enquanto
-   ele está aberto — arriscado e sem necessidade, porque existe uma API
-   (gRPC) feita exatamente para isso.
-2. **Vazamento de credencial não vira vazamento de autorização.** Se
-   algum dia a credencial da aplicação (`app_user`) vazar, quem a pegar
-   consegue ler `movies`/`users` — chato, mas não consegue nem tentar
-   ler ou escrever o grafo de permissões, porque `app_user` não tem
-   `CONNECT` na database `spicedb`. É o princípio de menor privilégio
-   aplicado literalmente na fronteira do banco.
-3. **É o cenário real que a POC precisa provar.** Numa empresa que já
-   tem um Postgres de produção com dados de negócio, a pergunta prática
-   é "dá pra colocar o SpiceDB do lado, sem misturar com o que já
-   existe?" — e a resposta que esta POC valida é: sim, na mesma
-   instância, numa database separada.
+1. **Propriedade das tabelas.** As tabelas da database `spicedb`
+   (`relation_tuple`, `namespace_config`, `caveat`,
+   `relation_tuple_transaction`, entre outras — estrutura e exemplos
+   reais em `04-como-o-spicedb-guarda-dados-no-postgres.md`) são geridas
+   exclusivamente pelo binário do SpiceDB via `spicedb migrate head`. O
+   código da aplicação não executa `SELECT` nessas tabelas; toda
+   interação ocorre via API gRPC.
+2. **Contenção de comprometimento de credencial.** Exposição da
+   credencial `app_user` permite leitura de `movies`/`users`, mas não
+   concede acesso ao grafo de permissões, dado que `app_user` não possui
+   `CONNECT` na database `spicedb` — aplicação do princípio de menor
+   privilégio na fronteira do banco.
+3. **Compatibilidade com infraestrutura pré-existente.** Em uma
+   organização que já opera um Postgres de produção, a questão prática
+   é se o SpiceDB pode ser incorporado sem interferir nos dados
+   existentes. Esta POC verifica que sim, na mesma instância, em
+   database dedicada.
 
 ---
 
-## O schema: onde a regra de negócio vira grafo
+## Schema: declaração da regra de autorização
 
-O arquivo `app/resources/schema.zed` é o único lugar onde a *regra* de
-quem pode ver o quê é declarada — não em código Clojure, em uma
-linguagem declarativa própria do SpiceDB:
+O arquivo `app/resources/schema.zed` é o único ponto de declaração da
+regra de acesso, em linguagem própria do SpiceDB:
 
 ```zed
 definition movie {
@@ -143,34 +120,29 @@ definition movie {
 }
 ```
 
-Ler essa última linha em português: "alguém pode `view` (ver) um filme
-se: (a) ele é membro do plano exigido pelo filme, OU (b) ele tem acesso
-à tag do filme (por outro caminho, tipo produto avulso), OU (c) ele foi
-liberado diretamente para aquele filme, OU (d) ele passa na condição de
-região (explicada na próxima seção)." Quatro caminhos, um só resultado.
-Isso é o que se chama de **múltiplos caminhos para a mesma permissão** —
-um dos padrões centrais do ReBAC (ver o outro artigo para a teoria).
+A permissão `view` resolve-se por quatro caminhos independentes:
+associação ao plano exigido, acesso à tag do título por via alternativa
+(ex.: produto avulso), concessão direta, ou satisfação de uma condição
+de Caveat. Essa resolução por união de múltiplos caminhos é um padrão
+característico de ReBAC (fundamentação no artigo 1).
 
-Importante, porque foi um bug real que apareceu durante a implementação:
-a **direção** da relação `inherits` entre planos importa. A intenção é
-"quem tem o plano superior automaticamente satisfaz os planos
-inferiores" — e isso só funciona se o plano *inferior* apontar `inherits`
-para o *superior* (`plan:basic --inherits--> plan:medium`), não o
-contrário. Modelar autorização como grafo não elimina a possibilidade de
-erro — troca "erro escondido num `if`" por "erro visível e testável
-numa tupla de relação", o que já é uma vitória, mas exige entender a
-direção da seta.
+Um aspecto relevante, identificado durante a implementação: a direção
+da relação `inherits` entre planos determina a semântica de herança. A
+intenção — assinante de plano superior satisfaz automaticamente os
+planos inferiores — exige que o plano *inferior* aponte `inherits` para
+o *superior* (`plan:basic --inherits--> plan:medium`); a direção
+inversa produz o efeito oposto. A modelagem por grafo não elimina erro
+de especificação, mas o torna explícito e verificável numa tupla de
+relação, em contraste com uma condição implícita em código imperativo.
 
 ---
 
-## Caveats na prática: o mesmo dado, duas respostas diferentes
+## Caveats: verificação de atributo em tempo de checagem
 
-O artigo geral (`o-que-e-spicedb-rebac-abac.md`) explica Caveats na
-teoria — a feature que a própria Netflix patrocionou pra ter ABAC dentro
-do SpiceDB. Aqui está o exemplo rodando de verdade nesta POC, não só
-citado.
+O artigo 1 descreve Caveats em termos conceituais. Esta seção documenta
+a implementação verificada nesta POC.
 
-Primeiro, uma condição, declarada no schema:
+Condição declarada no schema:
 
 ```zed
 caveat region_allowed(user_region string, allowed_regions list<string>) {
@@ -178,15 +150,15 @@ caveat region_allowed(user_region string, allowed_regions list<string>) {
 }
 ```
 
-Ela recebe dois valores: `allowed_regions` é gravado **junto com a
-relação**, no momento em que ela é escrita (é um dado estático, como
-qualquer outra tupla). `user_region` **não é gravado em lugar nenhum**
-— ele só existe no instante da pergunta, como parâmetro da própria
-chamada de `CheckPermission`. É essa diferença de "quando o dado chega"
-que separa ABAC de ReBAC.
+O parâmetro `allowed_regions` é persistido junto à relação, no momento
+de sua escrita — um dado estático, análogo a qualquer outra tupla.
+`user_region` não é persistido em nenhum ponto: existe apenas como
+parâmetro da chamada `CheckPermission`. Essa diferença — momento em que
+cada valor se torna disponível — é o critério que distingue ABAC de
+ReBAC.
 
-Na seed, o filme `filme_regional` recebe essa relação para a `alice`,
-liberado só para Brasil e Argentina:
+Relação de seed para o título `filme_regional`, liberado para `alice`
+em Brasil e Argentina:
 
 ```clojure
 {:resource-type "movie" :resource-id "filme_regional" :relation "region_locked_viewer"
@@ -194,10 +166,9 @@ liberado só para Brasil e Argentina:
  :caveat {:name "region_allowed" :context {:allowed_regions ["BR" "AR"]}}}
 ```
 
-E a rota HTTP repassa a região da requisição (`?region=`) como o
-atributo vivo, no momento da checagem — não lê isso de nenhuma coluna
-do Postgres, é passado explicitamente a cada chamada, simulando o que
-num sistema real viria de geolocalização por IP:
+A rota HTTP repassa a região informada na requisição (`?region=`) como
+atributo de checagem — não é lida de coluna alguma do Postgres,
+simulando o que, em produção, corresponderia a geolocalização por IP:
 
 ```clojure
 (let [region (get-in request [:query-params :region])
@@ -205,27 +176,25 @@ num sistema real viria de geolocalização por IP:
   (movie-service/can-view? system {:user-id user-id :movie-id movie-id} context))
 ```
 
-Resultado testado ao vivo, mesma relação gravada uma única vez:
+Resultado observado, para a mesma tupla persistida:
 
 ```bash
 curl "http://localhost:3000/movies/filme_regional/access" \
-  -H "Authorization: Bearer $ALICE_JWT"                       # {"allowed":false} — sem região, fail-closed
+  -H "Authorization: Bearer $ALICE_JWT"                       # {"allowed":false} — sem região, nega por padrão
 curl "http://localhost:3000/movies/filme_regional/access?region=BR" \
   -H "Authorization: Bearer $ALICE_JWT"                       # {"allowed":true}
 curl "http://localhost:3000/movies/filme_regional/access?region=US" \
   -H "Authorization: Bearer $ALICE_JWT"                       # {"allowed":false}
 ```
 
-Note o "sem região, fail-closed": quando o contexto necessário pro
-caveat não chega, o SpiceDB não consegue provar que a condição é
-verdadeira — e por padrão, se `check-permission` não recebe uma resposta
-definitivamente positiva (`PERMISSIONSHIP_HAS_PERMISSION`), ela retorna
-`false`. Isso vale tanto para "negado" quanto para "não deu pra saber"
-— o mesmo princípio de segurança já usado no resto da POC (negar por
-padrão, nunca assumir acesso).
+Quando o contexto necessário à avaliação da caveat não é fornecido, o
+SpiceDB não pode confirmar a condição, e a ausência de resposta
+positiva definitiva (`PERMISSIONSHIP_HAS_PERMISSION`) é tratada, nesta
+implementação, como negação — o mesmo critério de negar por padrão
+aplicado ao restante da POC.
 
-Também dá pra escrever uma relação com caveat em runtime, pela mesma
-rota que já existia:
+A mesma rota de escrita de relações aceita uma caveat em tempo de
+execução:
 
 ```bash
 curl -X POST http://localhost:3000/relationships \
@@ -237,7 +206,7 @@ curl -X POST http://localhost:3000/relationships \
 
 ---
 
-## As peças de código, e o papel de cada uma
+## Organização do código
 
 ```mermaid
 graph LR
@@ -258,31 +227,24 @@ graph LR
     AP -.implementado por.-> SC
 ```
 
-- **`domain/authz_client.clj`** — não tem nenhuma linha de código que
-  fale gRPC. É só uma "promessa de contrato": quatro funções que
-  qualquer implementação de autorização precisa saber fazer
-  (`check-permission`, `lookup-resources`, `write-relationships!`,
-  `write-schema!`). Por quê isso importa? Porque a regra de negócio
-  (`movie_service`) nunca precisa saber que existe gRPC, Protobuf ou
-  SpiceDB — ela só conhece esse contrato. Se um dia a empresa decidir
-  trocar de motor de autorização, essa é a única parede que muda.
-- **`infra/spicedb/client.clj`** — a implementação de verdade desse
-  contrato, falando o protocolo gRPC do SpiceDB. É aqui que "ver se
-  alice pode assistir ao Grinch" vira, de fato, uma chamada de rede para
-  o processo do SpiceDB.
-- **`domain/movie_service.clj`** — a regra de negócio propriamente dita.
-  Duas funções: `can-view?` (pergunta simples, sim/não) e
-  `available-movies` (pergunta mais interessante: "me dê a lista de tudo
-  que este usuário pode ver" — o SpiceDB responde com uma lista de ids,
-  e o Postgres entra depois só para buscar título/sinopse desses ids).
-- **`infra/http/*`** — a camada HTTP (Pedestal) e o interceptor de
-  autenticação. Importante: **autenticação (quem é você) e autorização
-  (o que você pode fazer) são coisas propositalmente separadas aqui.**
-  Um JWT inválido nunca chega a consultar o SpiceDB — é rejeitado antes,
-  com `401`. Só depois de saber *quem* pergunta é que se pergunta *o
-  quê* essa pessoa pode fazer.
+- **`domain/authz_client.clj`** — protocolo sem dependência de gRPC:
+  quatro funções (`check-permission`, `lookup-resources`,
+  `write-relationships!`, `write-schema!`) que definem o contrato de
+  qualquer implementação de autorização. A regra de negócio
+  (`movie_service`) depende apenas desse contrato, não de gRPC, Protobuf
+  ou SpiceDB diretamente — isolando o ponto de mudança em caso de troca
+  de motor.
+- **`infra/spicedb/client.clj`** — implementação concreta do contrato,
+  via protocolo gRPC do SpiceDB.
+- **`domain/movie_service.clj`** — regra de negócio: `can-view?`
+  (decisão booleana) e `available-movies` (lista de recursos acessíveis,
+  obtida do SpiceDB e hidratada com metadados do Postgres).
+- **`infra/http/*`** — camada HTTP (Pedestal) e interceptor de
+  autenticação. Autenticação e autorização são deliberadamente
+  desacopladas: um JWT inválido é rejeitado com `401` antes de qualquer
+  consulta ao SpiceDB.
 
-## O fluxo completo de uma pergunta de autorização
+## Fluxo de uma requisição de autorização
 
 ```mermaid
 sequenceDiagram
@@ -300,13 +262,11 @@ sequenceDiagram
     Regra-->>Cliente: {"allowed": true}
 ```
 
-Note o que **não** acontece nesse fluxo: em nenhum momento o código
-Clojure percorre a árvore de planos, verifica heranças ou soma
-condições manualmente. Ele faz uma pergunta e recebe uma resposta. Toda
-a complexidade da regra "por quê" vive dentro do schema, não no código
-que pergunta.
+O código Clojure não percorre a árvore de planos nem avalia condições
+de herança: emite uma consulta e recebe uma resposta. A complexidade da
+regra reside no schema, não no código que a invoca.
 
-## Como rodar, na prática
+## Execução
 
 ```bash
 make up                    # sobe tudo (gera .env com secrets de dev automaticamente)
@@ -316,8 +276,8 @@ make mint-token USER_ID=bob
 curl http://localhost:3000/movies/grinch/access -H "Authorization: Bearer <token>"
 curl http://localhost:3000/available-movies -H "Authorization: Bearer <token>"
 
-curl "http://localhost:3000/movies/filme_regional/access?region=BR" -H "Authorization: Bearer <token>"  # Caveat: true
-curl "http://localhost:3000/movies/filme_regional/access?region=US" -H "Authorization: Bearer <token>"  # Caveat: false
+curl "http://localhost:3000/movies/filme_regional/access?region=BR" -H "Authorization: Bearer <token>"
+curl "http://localhost:3000/movies/filme_regional/access?region=US" -H "Authorization: Bearer <token>"
 
 make seed PROFILE=medium   # popula com volume (200 usuários, 80 filmes)
 make bench PROFILE=medium  # mede latência das checagens de permissão
@@ -325,27 +285,25 @@ make bench PROFILE=medium  # mede latência das checagens de permissão
 make reset                 # zera tudo (Postgres do zero)
 ```
 
-Ver o `README.md` na raiz do repositório para a lista completa de
-comandos e cenários de teste.
+Ver `README.md` na raiz do repositório para a lista completa de
+comandos e cenários.
 
-## O veredito que esta POC ajuda a dar
+## Avaliação
 
-No fim, a pergunta de negócio não é "o SpiceDB funciona" — é "vale a pena
-trocar o jeito atual de fazer autorização por este". Os sinais que esta
-POC dá para essa decisão:
+A questão relevante não é se o SpiceDB opera corretamente, mas se a
+substituição do modelo atual de autorização se justifica. Os elementos
+observados nesta implementação, favoráveis à adoção: a regra de acesso
+concentra-se num único artefato (`schema.zed`); alteração de uma
+relação (por exemplo, concessão avulsa de acesso a um título) constitui
+uma chamada de API, não uma alteração de código sujeita a novo deploy;
+a separação entre autenticação e autorização é explícita na arquitetura;
+e a evolução de ReBAC puro para Caveats, quando necessária, não requer
+substituição do motor.
 
-- **A favor:** a regra de acesso fica num lugar só (o `schema.zed`), em
-  vez de espalhada; mudar uma relação (ex.: dar acesso avulso a um
-  filme) é uma chamada de API, não um deploy; a separação
-  autenticação/autorização fica explícita na arquitetura, não só na
-  cabeça de quem escreveu o código; e — testado ao vivo nesta POC, não
-  só documentado — dá pra evoluir de ReBAC puro para ABAC-dentro-do-ReBAC
-  (Caveats) sem trocar de motor nem reescrever o que já existe, quando o
-  problema real precisar de atributos avaliados na hora (região,
-  dispositivo, fraude).
-- **Custo a considerar:** existe uma peça nova rodando (o próprio
-  SpiceDB), uma linguagem nova para aprender (`zed`), e — como o bug da
-  direção do `inherits` (e, depois, o bug do `route/query-params` sendo
-  chamado como função) mostraram — a modelagem em grafo e a integração
-  gRPC têm seus próprios jeitos de errar, só que mais visíveis e
-  testáveis do que um `if` perdido.
+Custos identificados: um componente adicional em operação (o próprio
+SpiceDB), uma linguagem de schema a ser aprendida (`zed`), e — como
+evidenciado pelo erro de direção em `inherits` e, posteriormente, pelo
+erro de invocação de `route/query-params` como função — a modelagem por
+grafo e a integração via gRPC apresentam modos de falha próprios,
+comparativamente mais visíveis e verificáveis do que uma condição
+imperativa incorreta, mas não inexistentes.

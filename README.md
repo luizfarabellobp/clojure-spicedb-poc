@@ -61,7 +61,7 @@ citado com fonte no artigo 1 (link abaixo).
 
 Esta POC testa o núcleo dessa família — ReBAC puro, para modelar planos
 de assinatura, produtos avulsos e tags de conteúdo — **e também
-implementa e testa ao vivo um exemplo real de Caveats** (restrição por
+implementa e verifica um exemplo de Caveats** (restrição por
 região geográfica), com Postgres compartilhado entre os dados de negócio
 da aplicação e o datastore interno do SpiceDB.
 
