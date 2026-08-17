@@ -71,6 +71,7 @@ da aplicação e o datastore interno do SpiceDB.
 3. [`.docs/03-arquivos-de-configuracao-explicados.md`](.docs/03-arquivos-de-configuracao-explicados.md) — mapa de toda a estrutura do projeto (pasta por pasta) e o que cada arquivo de configuração faz (docker-compose, Makefile, deps.edn, schema.zed, etc.).
 4. [`.docs/04-como-o-spicedb-guarda-dados-no-postgres.md`](.docs/04-como-o-spicedb-guarda-dados-no-postgres.md) — as tabelas internas do SpiceDB, com estrutura e exemplos de linha extraídos direto do banco local desta POC.
 5. [`.docs/05-alternativas-ao-spicedb.md`](.docs/05-alternativas-ao-spicedb.md) — outras ferramentas do mesmo espaço (OpenFGA, Ory Keto, OPA, AWS Cedar, Casbin) e por que esta POC escolheu o SpiceDB.
+6. [`.docs/06-testes-de-carga-e-desempenho.md`](.docs/06-testes-de-carga-e-desempenho.md) — mais casos de teste de carga/desempenho, com o passo a passo de comandos para reproduzir e os resultados reais medidos.
 
 Além dos 5 artigos acima, [`.docs/spicedb-poc.postman_collection.json`](.docs/spicedb-poc.postman_collection.json)
 é uma **ferramenta de teste**, não um artigo de leitura — por isso fica

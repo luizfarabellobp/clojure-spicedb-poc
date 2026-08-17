@@ -1,6 +1,6 @@
 # Alternativas ao SpiceDB (e por que existe mais de uma opção)
 
-> Artigo 5 de 5. O SpiceDB não é a única ferramenta que resolve "quem
+> Artigo 5 de 6. O SpiceDB não é a única ferramenta que resolve "quem
 > pode fazer o quê". Aqui estão as principais alternativas, o que cada
 > uma faz de diferente, e por que esta POC escolheu o SpiceDB mesmo
 > assim. Ver o artigo 1 pra entender ReBAC/ABAC antes de ler este.

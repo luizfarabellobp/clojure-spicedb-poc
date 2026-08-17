@@ -1,6 +1,6 @@
 # Estrutura do projeto e arquivos de configuração, um por um
 
-> Artigo 3 de 5. Não é sobre SpiceDB nem ReBAC — é sobre "o que é essa
+> Artigo 3 de 6. Não é sobre SpiceDB nem ReBAC — é sobre "o que é essa
 > pasta/esse arquivo aqui": um mapa de toda a árvore do projeto, e
 > depois, com mais detalhe, o que cada arquivo de configuração faz, por
 > que existe, e o que quebraria sem ele.

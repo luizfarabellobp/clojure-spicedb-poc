@@ -1,6 +1,6 @@
 # O que é o SpiceDB (explicado do jeito mais simples possível)
 
-> Artigo 1 de 5. Aqui você entende de onde o SpiceDB veio, o que é
+> Artigo 1 de 6. Aqui você entende de onde o SpiceDB veio, o que é
 > ReBAC, o que é ABAC, e como a Netflix usa isso. Os próximos artigos
 > mostram como tudo isso aparece no código desta POC (2), o que cada
 > arquivo de configuração faz (3), como os dados ficam guardados no
