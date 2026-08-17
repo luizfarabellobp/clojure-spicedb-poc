@@ -82,9 +82,13 @@ poc-authz/
   - `bootstrap.clj` — o cenário fixo (alice, bob, os 4 filmes), roda
     sozinho toda vez que a app sobe.
   - `generator.clj` — a seed de volume (`make seed PROFILE=...`), sob
-    demanda.
-- **`perf/bench.clj`** — mede a latência das checagens de permissão
-  (`make bench`).
+    demanda. Profiles: `small`/`medium`/`large` (amostrados),
+    `massive` (produto cartesiano usuário×filme) e `chain-30` (cadeia
+    de 30 planos encadeados via `inherits`, sem usuários/filmes de
+    volume) — ver artigo 6 para o que cada um mede.
+- **`perf/bench.clj`** — mede a latência das checagens de permissão,
+  sequencial (`make bench`) ou com N threads simultâneas medindo
+  throughput (`make bench-concurrent`) — ver artigo 6.
 - **`dev/token.clj`** — gera um token JWT de teste (`make mint-token`);
   só existe pra facilitar teste local, não é parte da API de produção.
 
@@ -110,10 +114,10 @@ cada build). É esse arquivo que `make up`/`make db`/`make down`/
 
 Um jeito mais fácil de rodar os comandos do `docker-compose.yml` e da
 aplicação, sem precisar decorar a sintaxe certa de cada um. Cada alvo
-(`up`, `db`, `seed`, `bench`, `mint-token`, `reset`, `logs`, `ps`) é um
-atalho. O alvo `env` é o único que faz algo a mais além de atalho: ele
-**cria** o `.env` (explicado abaixo) na primeira vez que você roda
-qualquer comando que precise dele.
+(`up`, `db`, `seed`, `bench`, `bench-concurrent`, `mint-token`, `reset`,
+`logs`, `ps`) é um atalho. O alvo `env` é o único que faz algo a mais
+além de atalho: ele **cria** o `.env` (explicado abaixo) na primeira vez
+que você roda qualquer comando que precise dele.
 
 ### `.env` (criado sozinho, nunca vai pro repositório)
 
@@ -165,8 +169,8 @@ POC — o SQL puro já resolve.
 
 A lista de dependências da aplicação (Pedestal, cliente do SpiceDB,
 `component`, Aero, `buddy-sign`, `next.jdbc`, `jsonista`) e os comandos
-prontos (`:run`, `:seed`, `:bench`, `:mint-token`) que o `Makefile` e o
-`Dockerfile` chamam.
+prontos (`:run`, `:seed`, `:bench`, `:bench-concurrent`, `:mint-token`)
+que o `Makefile` e o `Dockerfile` chamam.
 
 ### `Dockerfile`
 

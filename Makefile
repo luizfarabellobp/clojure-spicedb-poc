@@ -1,8 +1,10 @@
 PROFILE ?= small
 ITERATIONS ?= 50
 USER_ID ?= alice
+CONCURRENCY ?= 10
+TOTAL_REQUESTS ?= 200
 
-.PHONY: help env db up down reset seed bench mint-token logs ps
+.PHONY: help env db up down reset seed bench bench-concurrent mint-token logs ps
 
 help:
 	@echo "Alvos disponíveis:"
@@ -11,8 +13,9 @@ help:
 	@echo "  make up                  - sobe a stack inteira (build incluso) e espera a app ficar pronta"
 	@echo "  make down                - para os containers (mantém os dados)"
 	@echo "  make reset               - para os containers e apaga os volumes (reseta tudo)"
-	@echo "  make seed PROFILE=medium - roda a seed volumétrica (small|medium|large, default: small)"
-	@echo "  make bench PROFILE=medium ITERATIONS=100 - roda o benchmark de latência"
+	@echo "  make seed PROFILE=medium - roda a seed volumétrica (small|medium|large|massive|chain-30, default: small)"
+	@echo "  make bench PROFILE=medium ITERATIONS=100 - roda o benchmark sequencial de latência"
+	@echo "  make bench-concurrent PROFILE=massive CONCURRENCY=20 TOTAL_REQUESTS=500 - roda o benchmark com N threads simultâneas e mede throughput"
 	@echo "  make mint-token USER_ID=bob - gera um JWT de teste para o user-id informado"
 	@echo "  make logs                - segue os logs da app"
 	@echo "  make ps                  - lista os containers da stack"
@@ -49,6 +52,9 @@ seed:
 
 bench:
 	docker compose exec app clojure -X:bench :profile :$(PROFILE) :iterations $(ITERATIONS)
+
+bench-concurrent:
+	docker compose exec app clojure -X:bench-concurrent :profile :$(PROFILE) :concurrency $(CONCURRENCY) :total-requests $(TOTAL_REQUESTS)
 
 mint-token:
 	docker compose exec app clojure -X:mint-token :user-id '"$(USER_ID)"'
