@@ -7,7 +7,8 @@
             [clojure.tools.logging :as log]
             [clojure.pprint :as pprint]
             [clojure.java.io :as io])
-  (:import [java.time Instant]))
+  (:import [java.time Instant]
+           [java.util.concurrent Executors Callable Future]))
 
 (defn- percentile [sorted-ms p]
   (let [idx (int (Math/ceil (* p (dec (count sorted-ms)))))]
@@ -38,6 +39,38 @@
   (summarize "lookup-resources"
     (repeatedly n #(timed-ms (fn [] (authz/lookup-resources spicedb
                                        {:resource-type "movie" :permission "view" :subject-id subject-id}))))))
+
+(defn- run-concurrent-checks [spicedb resource-id subject-id total-requests concurrency]
+  (let [executor (Executors/newFixedThreadPool concurrency)
+        start (System/nanoTime)
+        futures (mapv (fn [_]
+                        (.submit executor
+                                 ^Callable (fn [] (timed-ms (fn [] (authz/check-permission spicedb
+                                                                      {:resource-type "movie" :resource-id resource-id
+                                                                       :permission "view" :subject-id subject-id}))))))
+                      (range total-requests))
+        latencies (mapv #(.get ^Future %) futures)
+        elapsed-s (/ (- (System/nanoTime) start) 1e9)]
+    (.shutdown executor)
+    (assoc (summarize (str "check-permission-concurrent:" resource-id) latencies)
+           :total-requests total-requests
+           :concurrency concurrency
+           :elapsed-s elapsed-s
+           :throughput-rps (/ total-requests elapsed-s))))
+
+(defn run-concurrent! [{:keys [profile concurrency total-requests check-resource-id check-subject-id]
+                        :or {profile :small concurrency 10 total-requests 200
+                             check-resource-id "grinch" check-subject-id "alice"}}]
+  (let [config (config/load-config)
+        spicedb (component/start (spicedb-client/new-spicedb-client (:spicedb config)))
+        results (assoc (run-concurrent-checks spicedb check-resource-id check-subject-id total-requests concurrency)
+                        :profile profile :timestamp (str (Instant/now)))
+        report-path (str "target/perf-report-concurrent-" (name profile) "-" (System/currentTimeMillis) ".edn")]
+    (io/make-parents report-path)
+    (spit report-path (with-out-str (pprint/pprint results)))
+    (log/info "Relatório de performance (concorrente) salvo em" report-path)
+    (component/stop spicedb)
+    results))
 
 (defn run! [{:keys [profile iterations check-resource-id multi-check-resource-id check-subject-id lookup-subject-id]
              :or {profile :small iterations 100

@@ -21,4 +21,6 @@
   :seed       {:exec-fn streaming-authz.infra.seed.generator/run!
                :exec-args {:profile :small}}
   :bench      {:exec-fn streaming-authz.perf.bench/run!
-               :exec-args {:profile :small :iterations 50}}}}
+               :exec-args {:profile :small :iterations 50}}
+  :bench-concurrent {:exec-fn streaming-authz.perf.bench/run-concurrent!
+                      :exec-args {:profile :small :concurrency 10 :total-requests 200}}}}
