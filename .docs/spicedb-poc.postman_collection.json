@@ -1,0 +1,485 @@
+{
+  "info": {
+    "_postman_id": "b6e1a5b2-9c3d-4f1a-8e2b-7a5d9c1e4f60",
+    "name": "POC SpiceDB — Autorização (ReBAC + Caveats)",
+    "description": "Cenários de teste da POC de autorização com SpiceDB (streaming: planos, produtos avulsos, tags, acesso direto e um exemplo de Caveat/ABAC por região).\n\nComo usar:\n1. Suba a POC: `make up` (ver README.md na raiz do repositório).\n2. Gere tokens de teste: `make mint-token USER_ID=alice` e `make mint-token USER_ID=bob`.\n3. Nesta collection, edite as variáveis `alice_token` e `bob_token` (aba Variables desta collection) colando os tokens gerados.\n4. Rode as pastas em ordem (1 → 4). A pasta 4 altera o estado do banco — se quiser rodar tudo de novo do zero, rode `make reset && make up` antes.\n\nOs tokens são assinados com o `JWT_HS256_SECRET` gerado localmente (`.env`) — por isso não vêm hardcoded aqui: um token gerado num ambiente não é válido em outro.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000", "type": "string" },
+    { "key": "alice_token", "value": "", "type": "string" },
+    { "key": "bob_token", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('status é ok', function () {",
+                  "  const json = pm.response.json();",
+                  "  pm.expect(json.status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Cenários de autorização (ReBAC)",
+      "item": [
+        {
+          "name": "alice vê grinch (plan:basic)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('allowed é true', function () {",
+                  "  pm.expect(pm.response.json().allowed).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{alice_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/movies/grinch/access",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "grinch", "access"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "alice vê duro_de_matar (via produto avulso promo_natal)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('allowed é true', function () {",
+                  "  pm.expect(pm.response.json().allowed).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{alice_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/movies/duro_de_matar/access",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "duro_de_matar", "access"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "alice NÃO vê avatar_3 (sem premium, sem tag blockbuster)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('allowed é false', function () {",
+                  "  pm.expect(pm.response.json().allowed).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{alice_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/movies/avatar_3/access",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "avatar_3", "access"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "bob vê avatar_3 (direct_viewer explícito)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('allowed é true', function () {",
+                  "  pm.expect(pm.response.json().allowed).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bob_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/movies/avatar_3/access",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "avatar_3", "access"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "bob vê grinch (plan:medium herda acesso a basic)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('allowed é true', function () {",
+                  "  pm.expect(pm.response.json().allowed).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bob_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/movies/grinch/access",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "grinch", "access"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "bob lista os filmes disponíveis (lookup-resources)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('retorna uma lista de filmes', function () {",
+                  "  pm.expect(pm.response.json().movies).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bob_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/available-movies",
+              "host": ["{{base_url}}"],
+              "path": ["available-movies"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "sem token → 401 (autenticação falha antes de consultar o SpiceDB)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 401', function () { pm.response.to.have.status(401); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/movies/grinch/access",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "grinch", "access"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Caveats (ABAC dentro do ReBAC)",
+      "item": [
+        {
+          "name": "alice vê filme_regional com region=BR (dentro de allowed_regions)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('allowed é true', function () {",
+                  "  pm.expect(pm.response.json().allowed).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{alice_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/movies/filme_regional/access?region=BR",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "filme_regional", "access"],
+              "query": [{ "key": "region", "value": "BR" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "alice NÃO vê filme_regional com region=US (fora de allowed_regions)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('allowed é false', function () {",
+                  "  pm.expect(pm.response.json().allowed).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{alice_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/movies/filme_regional/access?region=US",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "filme_regional", "access"],
+              "query": [{ "key": "region", "value": "US" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "alice sem region → false (fail-closed, contexto insuficiente)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('allowed é false', function () {",
+                  "  pm.expect(pm.response.json().allowed).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{alice_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/movies/filme_regional/access",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "filme_regional", "access"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Alterar relações em runtime (muda o estado do banco)",
+      "item": [
+        {
+          "name": "conceder direct_viewer de avatar_3 pra alice",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('written é true', function () {",
+                  "  pm.expect(pm.response.json().written).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{alice_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resource-type\": \"movie\",\n  \"resource-id\": \"avatar_3\",\n  \"relation\": \"direct_viewer\",\n  \"subject-type\": \"user\",\n  \"subject-id\": \"alice\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/relationships",
+              "host": ["{{base_url}}"],
+              "path": ["relationships"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "confirma: agora alice vê avatar_3",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('allowed agora é true', function () {",
+                  "  pm.expect(pm.response.json().allowed).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{alice_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/movies/avatar_3/access",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "avatar_3", "access"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "conceder region_locked_viewer de filme_regional pro bob, restrito a PT (com Caveat)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('written é true', function () {",
+                  "  pm.expect(pm.response.json().written).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{alice_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"resource-type\": \"movie\",\n  \"resource-id\": \"filme_regional\",\n  \"relation\": \"region_locked_viewer\",\n  \"subject-type\": \"user\",\n  \"subject-id\": \"bob\",\n  \"caveat\": {\n    \"name\": \"region_allowed\",\n    \"context\": { \"allowed_regions\": [\"PT\"] }\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/relationships",
+              "host": ["{{base_url}}"],
+              "path": ["relationships"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "confirma: bob vê filme_regional com region=PT",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('allowed é true', function () {",
+                  "  pm.expect(pm.response.json().allowed).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bob_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/movies/filme_regional/access?region=PT",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "filme_regional", "access"],
+              "query": [{ "key": "region", "value": "PT" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "confirma: bob NÃO vê filme_regional com region=BR (caveat dele é só PT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('allowed é false', function () {",
+                  "  pm.expect(pm.response.json().allowed).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{bob_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/movies/filme_regional/access?region=BR",
+              "host": ["{{base_url}}"],
+              "path": ["movies", "filme_regional", "access"],
+              "query": [{ "key": "region", "value": "BR" }]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

@@ -104,6 +104,14 @@ curl -s http://localhost:3000/movies/grinch/access   # sem token → 401
 | bob | avatar_3 | `allowed: true` (direct_viewer explícito) |
 | bob | grinch | `allowed: true` (plan:medium herda acesso a basic) |
 
+**Collection do Postman:** [`.docs/spicedb-poc.postman_collection.json`](.docs/spicedb-poc.postman_collection.json)
+tem todos esses cenários prontos (mais os de Caveats e escrita de relação),
+já com os `pm.test` de cada um. Importe no Postman, gere os tokens com
+`make mint-token`, cole nas variáveis `alice_token`/`bob_token` da
+collection, e rode as pastas em ordem (a pasta 4 muda o estado do banco).
+Validada com `npx newman run` contra a API real: 16/16 requisições, 31/31
+assertions.
+
 ## Alterar relações em runtime
 
 ```bash
