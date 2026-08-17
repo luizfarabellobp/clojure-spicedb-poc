@@ -1,45 +1,49 @@
-# Formato de armazenamento do SpiceDB no Postgres
+# Como o SpiceDB guarda dados no Postgres (com exemplos reais desta POC)
 
-> Artigo 4 de 4. Documenta a estrutura de armazenamento interna do
-> SpiceDB no Postgres, com estrutura de tabela e exemplos de linha
-> extraídos do banco local desta POC. Ver `02-como-o-spicedb-funciona-nesta-poc.md`
-> para o contexto de implementação e `01-o-que-e-spicedb-rebac-abac.md`
-> para a fundamentação teórica de ReBAC/ABAC.
+> Artigo 4 de 4. O SpiceDB é o "intérprete" dos dados que ele mesmo
+> guarda no Postgres — aqui está exatamente o que isso significa,
+> tabela por tabela, com linhas de verdade tiradas do banco desta POC
+> (não inventadas). Ver `02-como-o-spicedb-funciona-nesta-poc.md` pro
+> contexto geral, `01-o-que-e-spicedb-rebac-abac.md` pra teoria de
+> ReBAC/ABAC, e `spicedb-poc.postman_collection.json` pra testar tudo
+> isso na prática.
 
-## Princípios verificados
+## Três coisas pra lembrar antes de entrar nos detalhes
 
-1. A aplicação não realiza leitura ou escrita direta na database
-   `spicedb`; toda interação ocorre via gRPC (`WriteRelationships`,
-   `WriteSchema`, `CheckPermission`, `LookupResources`). Leitura e
-   escrita no Postgres subjacente são exclusivas do processo SpiceDB.
-2. O formato de armazenamento é relacional simples — tabelas e linhas
-   convencionais, sem estrutura de grafo no nível de banco de dados. O
-   grafo é uma interpretação aplicada pelo SpiceDB sobre essas linhas,
-   segundo o `schema.zed`, no momento de resolução de uma consulta.
-3. O isolamento de credenciais foi reconfirmado para este artigo: uma
-   tentativa de `SELECT` na database `spicedb` com a credencial
-   `app_user` retorna
+1. **Nossa aplicação nunca lê nem escreve direto na database
+   `spicedb`.** Ela conversa por gRPC com o processo do SpiceDB
+   (`WriteRelationships`, `WriteSchema`, `CheckPermission`,
+   `LookupResources`). Quem lê e escreve o Postgres é só o próprio
+   SpiceDB.
+2. **O jeito de guardar é uma tabela relacional comum — sem nada de
+   "grafo" dentro do banco em si.** O grafo é uma forma de olhar pros
+   dados que o SpiceDB aplica em cima dessas linhas, seguindo o
+   `schema.zed`, na hora de responder uma pergunta. Fica claro nos
+   exemplos abaixo.
+3. Conferimos de novo, pra este artigo: a credencial da aplicação
+   (`app_user`) tenta um `SELECT` na database `spicedb` e recebe:
 
    ```
    FATAL:  permission denied for database "spicedb"
    DETAIL:  User does not have CONNECT privilege.
    ```
 
+   O isolamento é real, não só uma promessa no papel.
+
 ---
 
-## Tabelas da database `spicedb`
+## As tabelas da database `spicedb`
 
-Estrutura extraída via `\d <tabela>`
-(`docker compose exec postgres psql -U postgres -d spicedb`) contra a
-imagem `authzed/spicedb:latest` utilizada nesta POC. Este layout
-constitui detalhe interno de implementação — não é API pública, está
-sujeito a alteração entre versões, e não há documentação oficial
-descrevendo cada coluna (o modelo oficialmente documentado é o
-conceitual: relation tuples, namespaces — não o schema SQL literal).
-Por esse motivo, a fonte citada para estrutura de tabela é a extração
-direta do banco local, não documentação externa.
+Essas tabelas foram olhadas direto no banco (`\d <tabela>`, rodando
+`docker compose exec postgres psql -U postgres -d spicedb`), na imagem
+`authzed/spicedb:latest` que esta POC usa. **Aviso:** esse layout é
+detalhe interno do SpiceDB — pode mudar de versão pra versão, e não tem
+uma página oficial explicando coluna por coluna (o que é documentado
+oficialmente é a ideia geral — "relation tuples", "namespaces" — não o
+SQL exato). Por isso, aqui a fonte é o banco local, não uma doc
+externa.
 
-### `relation_tuple` — tabela central de fatos
+### `relation_tuple` — a tabela principal: os fatos, um por linha
 
 ```
       Column       |           Type           | Nullable |           Default
@@ -57,17 +61,16 @@ direta do banco local, não documentação externa.
  expiration        | timestamp with time zone |          |
 ```
 
-Cada linha representa um fato: o objeto `namespace:object_id` mantém a
-relação `relation` com o sujeito
-`userset_namespace:userset_object_id`. `created_xid`/`deleted_xid`
-implementam controle de versão — uma linha não é removida por `UPDATE`;
-recebe `deleted_xid` e uma nova linha é inserida, permitindo leitura em
-um instante consistente (mecanismo relacionado ao "New Enemy Problem"
-do Zanzibar, artigo 1). O valor `9223372036854775807` representa
-"sem expiração" (linha ainda vigente).
+Cada linha é um fato: "o `namespace:object_id` tem a relação `relation`
+com o `userset_namespace:userset_object_id`". `created_xid`/
+`deleted_xid` fazem o controle de versão — uma linha nunca é apagada de
+fato, ela ganha um `deleted_xid` e nasce uma linha nova. É assim que o
+SpiceDB consegue responder "como estava a permissão exatamente nesse
+momento" (o mesmo problema do "New Enemy Problem" do Zanzibar, artigo
+1). O número `9223372036854775807` é o "infinito" (linha ainda viva).
 
-Tuplas vigentes desta POC no momento da extração, seed fixa sem
-execução de seed volumétrica:
+**As 14 tuplas vivas desta POC agora**, direto do banco (seed fixa, sem
+rodar a seed de volume):
 
 | namespace | object_id | relation | userset_namespace | userset_object_id | caveat_name |
 |---|---|---|---|---|---|
@@ -86,30 +89,31 @@ execução de seed volumétrica:
 | plan | medium | subscriber | user | bob | |
 | plan | medium | inherits | plan | premium | |
 
-A linha de `filme_regional` é a única com `caveat_name` preenchido. O
-`caveat_context` correspondente, coluna `jsonb` e portanto diretamente
-legível:
+A linha do `filme_regional` é a única com `caveat_name` preenchido. O
+`caveat_context` dela, direto do banco (é uma coluna `jsonb`, então dá
+pra ler sem problema):
 
 ```json
 {"allowed_regions": ["BR", "AR"]}
 ```
 
-Esse é o dado estático gravado na seed
+Esse é o dado fixo que gravamos na seed
 (`{:caveat {:name "region_allowed" :context {:allowed_regions ["BR" "AR"]}}}`).
-O parâmetro `user_region`, que determina o resultado da avaliação (`BR`
-satisfaz, `US` não satisfaz), não está presente nesta tabela — existe
-apenas no momento da chamada `CheckPermission` e não é persistido.
+O `user_region` que decide o resultado (`BR` permite, `US` nega) **não
+está guardado em lugar nenhum desta tabela** — ele só existe na hora da
+pergunta `CheckPermission`.
 
-Observação adicional: a coluna `userset_relation` não é vazia para uma
-referência direta a objeto — assume o valor literal `...` (confirmado
-com `psql -x`, eliminando hipótese de truncamento de exibição). Isso é
-consistente com a convenção Zanzibar/SpiceDB para indicar referência
-direta a objeto, em oposição a um "userset" (`objeto#relação`, por
-exemplo `group:eng#member`). Não foi localizada documentação oficial
-descrevendo esse valor especificamente; o dado é reportado aqui como
-observação direta do banco, não como citação de fonte externa.
+**Um detalhe visto direto no banco:** a coluna `userset_relation` não
+vem vazia pra uma referência direta a um objeto — vem com o valor
+literal `...` (três pontos, uma string de verdade, não corte de tela —
+conferimos com `psql -x` pra ter certeza). Isso bate com a convenção do
+Zanzibar/SpiceDB pra dizer "esta referência aponta direto pro objeto,
+sem passar por outra relação" (diferente de um "userset", que apontaria
+pra `objeto#relação`, tipo `group:eng#member`). Não achamos uma página
+oficial explicando esse detalhe — por isso registramos só como algo que
+vimos no banco, não como citação de documentação.
 
-### `caveat` — definição compilada de cada Caveat
+### `caveat` — a definição de cada Caveat, já compilada
 
 ```
        Column        |       Type        | Nullable |
@@ -122,9 +126,9 @@ observação direta do banco, não como citação de fonte externa.
  deleted_xid         | xid8              | not null |
 ```
 
-`definition` é binária (`bytea`), não textual. Extração de
-`region_allowed` (733 bytes; trecho abaixo obtido por tentativa de
-leitura como texto, ilustrando a ausência de legibilidade direta):
+`definition` é binário (`bytea`), não texto. Tirando a nossa
+`region_allowed` do banco (733 bytes; abaixo, um pedaço tentando ler
+como texto, pra mostrar que não dá pra ler de verdade):
 
 ```
 \x0Eregion_allowed\x12\305\x01\x12\x0Eregion_allowed
@@ -132,15 +136,15 @@ leitura como texto, ilustrando a ausência de legibilidade direta):
 \x1A\x07in_list\x12\x15\x08\x03\x12\x11\x0Fallowed_regions...
 ```
 
-Trata-se da árvore sintática compilada da expressão CEL `user_region in
-allowed_regions` — fragmentos como `region_allowed`, `user_region`,
-`in_list` e `allowed_regions` são identificáveis no binário, sem
-constituir código-fonte legível. O `.zed` é compilado uma vez, na
-chamada `WriteSchema`; a forma persistida é binária, favorecendo
-velocidade de avaliação em `CheckPermission` em detrimento de
-reversibilidade direta ao texto original.
+É a expressão CEL `user_region in allowed_regions` já compilada — dá
+pra reconhecer pedaços como `region_allowed`, `user_region`, `in_list`
+misturados no binário, mas não dá pra ler como código de verdade. O
+`.zed` que escrevemos é compilado uma vez, quando mandamos pro SpiceDB
+(`WriteSchema`), e o que fica guardado é essa forma binária — mais
+rápida de conferir a cada pergunta, mas sem volta fácil pro texto
+original.
 
-### `namespace_config` — definição compilada de cada `definition`
+### `namespace_config` — a definição de cada tipo, também compilada
 
 ```
       Column       |       Type        | Nullable |
@@ -151,9 +155,9 @@ reversibilidade direta ao texto original.
  deleted_xid       | xid8              | not null |
 ```
 
-Uma linha por `definition` do `schema.zed` (`user`, `plan`,
-`commercial_product`, `content_tag`, `movie`), serializada em protobuf.
-Tamanhos extraídos:
+Uma linha por tipo do nosso `schema.zed` (`user`, `plan`,
+`commercial_product`, `content_tag`, `movie`), cada uma binária.
+Tamanhos reais:
 
 | namespace | tamanho (bytes) |
 |---|---|
@@ -163,42 +167,41 @@ Tamanhos extraídos:
 | content_tag | 445 |
 | movie | 715 |
 
-`movie` apresenta o maior tamanho por possuir o maior número de
-relações e a permissão de maior complexidade (`view`, quatro caminhos).
+`movie` é o maior porque é o tipo com mais relações e a permissão mais
+complexa (`view`, com quatro caminhos).
 
-### `schema` e `schema_revision` — versionamento do schema ativo
+### `schema` e `schema_revision` — versão do schema ativo
 
-`schema_revision` armazena um hash da revisão corrente do schema. A
-tabela `schema`, destinada por design ao texto do schema em blocos
-(`chunk_data`), encontrava-se vazia na instância examinada — a
-compilação reside em `namespace_config`/`caveat`, sem duplicação nesta
-tabela. Esta é uma observação pontual desta versão/modo de operação, não
-uma generalização para todas as versões do SpiceDB.
+`schema_revision` guarda um identificador da versão atual do schema.
+`schema` deveria guardar o texto do schema, em pedaços — mas, olhando
+direto nesta instância, a tabela estava **vazia** (a versão compilada
+mora em `namespace_config`/`caveat`, não duplicada aqui). Registramos
+isso como o que vimos nesta versão específica, não como regra geral do
+SpiceDB.
 
-### `relation_tuple_transaction` e `relationship_counter`
+### `relation_tuple_transaction` e `relationship_counter` — controle interno
 
-`relation_tuple_transaction` registra um snapshot Postgres
-(`pg_snapshot`) por transação de escrita — mecanismo de consistência
-que permite reconstruir o estado das permissões em um instante
-específico, base do `ZedToken` (artigo 1). `relationship_counter`
-armazena contagens pré-computadas, não exercitadas por esta POC.
+`relation_tuple_transaction` guarda uma "foto" do banco (`pg_snapshot`)
+a cada escrita — é o mecanismo que permite ao SpiceDB responder "como
+era a permissão exatamente neste momento", a base do `ZedToken` (artigo
+1). `relationship_counter` guarda contagens já calculadas, que esta POC
+não usa.
 
-### `metadata` e `alembic_version`
+### `metadata` e `alembic_version` — identidade e versão da instância
 
-`metadata` contém uma linha única com identificador da instância de
-datastore (extraído: `73b3aa3b-8ae0-44bd-b37d-52932b8ff7ff`; alterado a
-cada `make reset`, dado que o volume é recriado). `alembic_version`
-registra a migration aplicada. O nome "Alembic" corresponde
-historicamente a uma ferramenta de migration do ecossistema Python; sua
-presença como nome de tabela em um projeto Go sugere herança de
-convenção, não confirmada além do nome observado.
+`metadata` tem uma única linha, com um código que identifica essa
+instância (visto no banco:
+`73b3aa3b-8ae0-44bd-b37d-52932b8ff7ff` — muda a cada `make reset`, já
+que os dados são recriados do zero). `alembic_version` guarda qual
+migration está aplicada (o nome "Alembic" normalmente é de uma
+ferramenta do mundo Python — aparecer aqui, num projeto em Go, sugere
+que o nome foi herdado de alguma convenção; não confirmamos além disso).
 
 ---
 
-## Tabelas da database `app`
+## Pra comparar: as tabelas da database `app`
 
-Estrutura consideravelmente mais simples — sem colunas `bytea`, sem
-controle de transação próprio.
+Bem mais simples — sem binário, sem controle de transação próprio.
 
 ### `movies`
 
@@ -241,20 +244,20 @@ controle de transação próprio.
  bob   | bob@example.com   | Bob          | US      | 2026-08-15 13:25:39.047467+00
 ```
 
-Nenhuma coluna representa autorização — o conteúdo é descritivo, de
-catálogo e de perfil. `country` é dado de cadastro, não consultado por
-nenhuma checagem de autorização; o exemplo de Caveat descrito em
-`02-como-o-spicedb-funciona-nesta-poc.md` recebe a região como
-parâmetro de requisição, não a partir desta coluna.
+Nenhuma coluna aqui guarda "quem pode ver o quê" — é só descrição de
+catálogo e de perfil. `country`, por exemplo, é um dado de cadastro
+comum, e nenhuma checagem de autorização olha pra ele (o exemplo de
+Caveat usa a região vinda da requisição, não esta coluna — ver o artigo
+2).
 
 ---
 
 ## Referências
 
-- Extração direta do banco local desta POC, em 2026-08-17, contra
-  `authzed/spicedb:latest` — fonte primária de todo o layout de tabela e
-  exemplos de linha deste artigo.
-- [Datastore Migrations — Authzed Docs](https://authzed.com/docs/spicedb/concepts/datastore-migrations) — versionamento do schema interno do SpiceDB.
-- [`pkg/cmd/migrate.go` — repositório `authzed/spicedb`](https://github.com/authzed/spicedb/blob/main/pkg/cmd/migrate.go) — código-fonte de criação/migração dessas tabelas.
-- [Repositório `authzed/spicedb`](https://github.com/authzed/spicedb) — código-fonte completo, incluindo migrations por engine (`postgres`, `mysql`, `cockroachdb`, `spanner`).
-- [Conceitos: relation tuples e Zanzibar — Authzed Docs](https://authzed.com/docs/spicedb/concepts/zanzibar) — modelo conceitual implementado por `relation_tuple`.
+- Extração direta do banco local desta POC, em 17/08/2026, na imagem
+  `authzed/spicedb:latest` — fonte de todo o layout de tabela e todos
+  os exemplos de linha deste artigo.
+- [Datastore Migrations — Authzed Docs](https://authzed.com/docs/spicedb/concepts/datastore-migrations) — como o SpiceDB versiona o próprio schema interno.
+- [`pkg/cmd/migrate.go` — repositório `authzed/spicedb`](https://github.com/authzed/spicedb/blob/main/pkg/cmd/migrate.go) — o código que cria/migra essas tabelas.
+- [Repositório `authzed/spicedb`](https://github.com/authzed/spicedb) — código-fonte completo, incluindo as migrations de cada banco (`postgres`, `mysql`, `cockroachdb`, `spanner`).
+- [Conceitos: relation tuples e Zanzibar — Authzed Docs](https://authzed.com/docs/spicedb/concepts/zanzibar) — a ideia geral (já citada no artigo 1) que a tabela `relation_tuple` implementa.

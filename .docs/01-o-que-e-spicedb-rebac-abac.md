@@ -1,33 +1,37 @@
-# O que é o SpiceDB: origem, ReBAC, ABAC e o caso Netflix
+# O que é o SpiceDB (explicado do jeito mais simples possível)
 
-> Artigo 1 de 4. Fundamentos conceituais — origem do SpiceDB, definição
-> de ReBAC e ABAC, e o caso documentado da Netflix. Os artigos seguintes
-> tratam da implementação nesta POC (2), dos arquivos de configuração
-> (3) e do formato de armazenamento no Postgres (4). Uma collection do
-> Postman (`spicedb-poc.postman_collection.json`) acompanha o
-> repositório como ferramenta de teste, não como material de leitura.
+> Artigo 1 de 4. Aqui você entende de onde o SpiceDB veio, o que é
+> ReBAC, o que é ABAC, e como a Netflix usa isso. Os próximos artigos
+> mostram como tudo isso aparece no código desta POC (2), o que cada
+> arquivo de configuração faz (3), e como os dados ficam guardados no
+> Postgres (4). Tem também uma collection do Postman
+> (`spicedb-poc.postman_collection.json`) pra testar tudo na prática.
 
-## Escopo do problema
+## O problema, em uma frase
 
-Sistemas de autorização respondem a uma pergunta recorrente: dado um
-sujeito, uma ação e um recurso, a operação é permitida? Em escala —
-múltiplos serviços, múltiplos tipos de recurso, múltiplas regras de
-negócio — essa lógica tende a ser implementada de forma ad hoc,
-distribuída pelo código de cada aplicação. O resultado observado por
-organizações que atingem essa escala (Google e Netflix, entre as fontes
-citadas abaixo) é auditabilidade reduzida e duplicação de esforço entre
-equipes.
+Imagine um porteiro de prédio. Toda vez que alguém chega, ele precisa
+responder: "essa pessoa pode entrar?". Parece simples, mas não é: "mora
+aqui?", "é visita de quem mora?", "é entregador com encomenda de
+verdade?", "é o síndico?". Um sistema de software com muitos usuários e
+muitos recursos (arquivos, vídeos, contas) tem exatamente esse
+problema, só que multiplicado por milhões.
 
-Este artigo descreve duas famílias de solução para esse problema —
-**ReBAC** e **ABAC** — e um caso documentado em que ambas coexistem
-dentro da mesma organização.
+O jeito mais comum de resolver isso é espalhar a resposta pelo código:
+um pedaço aqui checa uma coisa, outro pedaço ali checa outra. Funciona
+até crescer demais — aí fica caro de conferir e fácil de errar.
+
+Este artigo conta duas formas diferentes de resolver esse problema —
+**ReBAC** e **ABAC** — e mostra como a Netflix usa as duas ao mesmo
+tempo, cada uma para um propósito diferente.
 
 ---
 
-## Origem: o paper Zanzibar (Google, 2019)
+## De onde isso veio: o paper Zanzibar, do Google
 
-O Google publicou em 2019 a descrição do sistema de autorização usado
-internamente por produtos como Drive, Calendar, Maps, Photos e YouTube:
+Em 2019, o Google contou publicamente como resolveu esse problema para
+o Drive, o Calendar, o Maps, o Photos e o YouTube — todos precisando
+responder "quem pode ver o quê" em milissegundos, bilhões de vezes por
+dia:
 
 > **"Zanzibar: Google's Consistent, Global Authorization System"**
 > Ruoming Pang, Ramon Caceres, Mike Burrows, Zhifeng Chen, Pratik Dave,
@@ -37,34 +41,34 @@ internamente por produtos como Drive, Calendar, Maps, Photos e YouTube:
 > Paper: <https://research.google/pubs/zanzibar-googles-consistent-global-authorization-system/>
 > Apresentação: <https://www.usenix.org/conference/atc19/presentation/pang>
 
-A proposta central — hoje a base do que se convencionou chamar de
-ReBAC — consiste em centralizar a lógica de permissão num serviço único,
-que armazena relações entre entidades ("pasta pertence a conta",
-"documento está dentro de pasta") e expõe uma interface padronizada de
-consulta sobre esse grafo. O paper introduz três conceitos (nomes
-correspondentes na terminologia do SpiceDB, conforme
-<https://authzed.com/docs/spicedb/concepts/zanzibar>):
+A ideia central: em vez de cada aplicativo guardar sua própria regra de
+acesso, existe **um serviço só**, guardando relações — "esta pasta é da
+conta X", "este documento está dentro desta pasta" — e todo mundo
+pergunta pra esse serviço em vez de decidir sozinho. O SpiceDB (o motor
+que esta POC usa) é uma versão open-source dessa mesma ideia.
 
-- **Relation tuples** — unidade básica: "sujeito A relaciona-se por R
-  com o objeto B" (SpiceDB: **Relationship**).
-- **Namespaces** — definição de tipos de objeto e suas relações
-  possíveis (SpiceDB: **Object Types**, expressos numa linguagem de
-  schema própria, `zed`).
-- **Zookies** — mecanismo de consistência que evita o "New Enemy
-  Problem" (leitura de permissão desatualizada em relação a uma escrita
-  concorrente). Equivalente no SpiceDB: **ZedToken**.
+O paper trouxe três conceitos, que o SpiceDB usa com outros nomes
+(ver <https://authzed.com/docs/spicedb/concepts/zanzibar>):
 
-O paper reporta, em produção, trilhões de relações, milhões de consultas
-por segundo, p95 abaixo de 10ms e disponibilidade superior a 99,999% ao
-longo de três anos. O SpiceDB é uma implementação open-source inspirada
-diretamente nesse modelo.
+- **Relation tuple** → no SpiceDB, **Relationship**: um fato do tipo
+  "A se relaciona com B".
+- **Namespace** → no SpiceDB, **Object Type**: a definição de um tipo
+  de coisa e quais relações ela pode ter.
+- **Zookie** → no SpiceDB, **ZedToken**: evita que alguém enxergue um
+  acesso que já devia ter sido cortado, só porque a informação nova
+  ainda não chegou.
+
+Números do paper: trilhões de relações guardadas, milhões de consultas
+por segundo, resposta em menos de 10 milissegundos em 95% dos casos, e
+mais de 99,999% de disponibilidade ao longo de 3 anos.
 
 ---
 
-## ReBAC: permissão como função de relações
+## ReBAC: "quem pode o quê" vira uma pergunta sobre relações
 
-**ReBAC (Relationship-Based Access Control)** condiciona a permissão à
-existência de relações entre entidades, não a uma lista fixa de papéis:
+**ReBAC** (Relationship-Based Access Control) responde à pergunta de
+acesso olhando pra **relações entre coisas**, não pra uma lista fixa de
+papéis:
 
 > "Under ReBAC, permissions are granted based on the relationships
 > between the entities involved (…) e.g., a user might be granted
@@ -72,26 +76,26 @@ existência de relações entre entidades, não a uma lista fixa de papéis:
 > which the document resides."
 > — Permit.io, <https://www.permit.io/blog/what-is-rebac>
 
-A distinção em relação ao RBAC tradicional (papéis globais como "Admin"
-ou "Editor") é que RBAC tende à "explosão de papéis" — um papel novo por
-combinação de caso de uso — enquanto ReBAC modela a permissão por
-relação com o recurso específico. O time do OpenFGA (outro motor
-inspirado em Zanzibar) resume a relação entre os dois modelos:
+Compare com o jeito antigo (RBAC): cada pessoa tem um "papel" fixo,
+tipo "Admin" ou "Editor". Isso cansa rápido — toda vez que aparece um
+caso novo, nasce um papel novo ("Editor-da-Pasta-X"). O ReBAC evita
+isso: a permissão depende da relação com aquele recurso específico, não
+de um papel geral. O time do OpenFGA resume bem:
 
 > "ReBAC is a superset of RBAC and natively covers ABAC scenarios when
 > attributes are expressed as relationships."
 > — <https://openfga.dev/docs/authorization-concepts>
 
-Isto é, cenários de ABAC podem, em princípio, ser expressos em ReBAC
-convertendo cada atributo em relação — uma conversão que, como o caso
-da Netflix demonstra adiante, nem sempre é apropriada.
+Ou seja: dá pra "forçar" um cenário de ABAC dentro do ReBAC, transformando
+cada atributo numa relação. Só que, como o caso da Netflix mostra
+adiante, isso nem sempre é uma boa ideia.
 
 ---
 
-## ABAC: permissão como avaliação de atributos
+## ABAC: a permissão é calculada na hora, olhando pra atributos
 
-**ABAC (Attribute-Based Access Control)** possui definição formal no
-NIST:
+**ABAC** (Attribute-Based Access Control) tem até uma definição oficial
+do governo americano:
 
 > "ABAC is a logical access control methodology where authorization to
 > perform a set of operations is determined by evaluating attributes
@@ -101,87 +105,90 @@ NIST:
 > — NIST Special Publication 800-162,
 > <https://csrc.nist.gov/pubs/sp/800/162/upd2/final>
 
-Em vez de verificar a existência de uma relação pré-escrita, ABAC avalia
-atributos do sujeito, do objeto e do ambiente no momento da decisão,
-segundo um modelo de quatro componentes (PEP/PDP/PIP/PAP — pontos de
-aplicação, decisão, informação e administração de política). A distinção
-central é temporal: a decisão em ABAC é computada a partir de atributos
-correntes; em ReBAC, a partir de fatos já persistidos.
+Em vez de perguntar "existe uma relação escrita entre A e B?", o ABAC
+pergunta "quais são os atributos de A, de B, e do momento agora — e a
+regra permite essa combinação?". Exemplo simples: "gerente de marketing
+pode publicar post de marketing" é ABAC (depende do cargo e da
+categoria do post). Já "Alice pode editar o Documento X porque é dona
+da pasta que contém X" é ReBAC.
+
+A diferença que mais importa: no ABAC, o dado usado na decisão só
+existe **na hora da pergunta**. No ReBAC, o dado já estava escrito
+antes.
 
 ---
 
-## Coexistência dos dois modelos: o caso Netflix
+## Dá pra usar os dois juntos? Sim — foi o que a Netflix pediu
 
-O SpiceDB — nativamente ReBAC — incorpora um mecanismo de avaliação de
-atributos em tempo de checagem, denominado **Caveats**:
+O SpiceDB, que nasceu 100% ReBAC, ganhou uma funcionalidade chamada
+**Caveats**, que mistura os dois modelos:
 
 > "Caveats allow for an elegant way to model dynamic policies and
 > ABAC-style (Attribute Based Access Control) decisions while still
 > providing scalability and performance guarantees."
 > — <https://authzed.com/docs/spicedb/concepts/caveats>
 
-Uma caveat é uma expressão em CEL (Common Expression Language) anexada
-a uma relação, avaliada apenas no momento do `CheckPermission`, com os
-atributos fornecidos naquele momento — por exemplo, uma relação `viewer`
-condicionada a `has_valid_ip`, que restringe o acesso por faixa de IP. A
-Seção "Caveats na prática" do artigo 2 descreve a implementação
-equivalente, com condição de região geográfica, verificada nesta POC.
+Uma "caveat" é uma condição (escrita numa linguagem chamada CEL) que
+fica grudada numa relação, mas só é conferida na hora da pergunta, com
+os dados daquele momento. Exemplo da própria documentação: uma relação
+`viewer` que só vale se o IP de quem pergunta estiver numa lista
+permitida.
 
-O desenvolvimento dessa funcionalidade foi patrocinado pela Netflix, que
-documentou publicamente a motivação:
+Esta POC usa a mesma ideia, só que com região geográfica em vez de IP —
+ver `02-como-o-spicedb-funciona-nesta-poc.md`, seção "Caveats na
+prática".
+
+Foi a **Netflix** quem pagou pra essa funcionalidade ser criada, e
+contou o motivo num artigo público:
 
 > **"ABAC on SpiceDB: Enabling Netflix's Complex Identity Types"**
 > Chris Wolfe, Joey Schorr, Victor Roldán Betancort — Netflix
 > TechBlog, 19 de maio de 2023.
 > <https://netflixtechblog.com/abac-on-spicedb-enabling-netflixs-complex-identity-types-c118f374fa89>
 > (republicado em <https://authzed.com/blog/abac-on-spicedb-enabling-netflix-complex-identity-types>;
-> estudo de caso em <https://authzed.com/customers/netflix>)
+> case study em <https://authzed.com/customers/netflix>)
 
-O problema descrito é a autorização de **identidades de aplicação**
-(por exemplo, uma instância do serviço Data Processor em `eu-west-1`,
-ambiente de teste, shard público) — não de usuários finais. Modelar esse
-cenário em ReBAC puro exigiria uma relação por combinação de atributo
-(região, ambiente, conta, shard), ingestão de eventos a cada
-autoscaling e um processo de limpeza de relações obsoletas; adicionalmente,
-condições de corrida entre a criação da instância e o registro da
-relação resultavam em negação indevida de acesso. A solução adotada
-substitui parte dessa lógica por condições avaliadas em tempo de
-checagem — origem do título "ABAC on SpiceDB".
+O problema da Netflix não era sobre pessoas — era sobre **máquinas**:
+"esta instância específica do serviço Data Processor, rodando na região
+`eu-west-1`, em modo de teste". Modelar isso só com ReBAC exigiria
+escrever uma relação nova pra cada combinação de região/ambiente/conta,
+e ainda corria o risco de negar acesso por engano quando a relação
+ainda não tinha sido escrita a tempo. A saída foi deixar essa parte ser
+calculada na hora (ABAC), dentro do mesmo SpiceDB — daí o nome do
+artigo, "ABAC on SpiceDB".
 
-### Autorização de assinantes: um sistema distinto
+### E os assinantes da Netflix? Isso é outro sistema, separado
 
-O trabalho descrito acima refere-se a infraestrutura, não à pergunta
-"este assinante pode acessar este título". Para autorização de membros,
-a Netflix apresentou publicamente um sistema separado, denominado PACS:
+Fácil de confundir: o que foi descrito acima é sobre autorizar
+**máquinas**, não sobre "a Alice pode assistir a este filme". Pra
+autorizar **assinantes**, a Netflix usa um sistema diferente, chamado
+publicamente de **PACS**:
 
 > **"Authorization at Netflix Scale"** — Travis Nelson (Netflix, time
 > AIM), QCon Plus 2022.
 > <https://www.infoq.com/presentations/authorization-scalability/>
 
-PACS é descrito como serviço de autorização centralizado — anteriormente,
-cada microsserviço replicava sua própria lógica — que avalia status de
-conta, plano, identidade de dispositivo, sinais de fraude e localização,
-com cache em duas camadas e modo de contingência local. Funcionalmente,
-aproxima-se de ABAC, embora não haja confirmação pública de que sua
-implementação utilize o SpiceDB.
+O PACS olha pra coisas como status da conta, plano, tipo de aparelho,
+sinais de fraude e localização — bem parecido com ABAC. Mas não há
+confirmação pública de que ele use o SpiceDB por baixo.
 
-Duas ressalvas quanto às fontes, para não sustentar conclusão além do
-que os dados permitem: (1) não há fonte primária que associe PACS ao
-SpiceDB — são tratados aqui como sistemas distintos (autorização de
-infraestrutura versus autorização de assinante), e não há evidência de
-que a Netflix tenha avaliado ReBAC para o segundo caso e optado por
-ABAC em seu lugar — a apresentação do PACS (2022) antecede o artigo de
-Caveats (2023), o que é compatível com sistemas independentes,
-desenvolvidos por equipes distintas, sem decisão comparativa entre os
-dois modelos; (2) a sigla PACS aparece com expansões divergentes em
-fontes secundárias, sem confirmação oficial — por isso é usada aqui sem
-expansão. O exemplo de "household sharing" ocasionalmente associado a
-ABAC na Netflix provém de terceiros (um fornecedor concorrente) e não é
-tratado como fato de primeira mão.
+**Duas coisas importantes pra não concluir mais do que se sabe:**
+1. Não existe fonte que ligue o PACS ao SpiceDB — tratamos aqui como
+   dois sistemas separados (um pra máquina, outro pra assinante). E não
+   existe prova de que a Netflix tenha testado ReBAC pros assinantes e
+   trocado por ABAC — a talk do PACS é de 2022, o artigo de Caveats é
+   de 2023, e dá pra explicar isso de um jeito bem mais simples: os dois
+   podem ser projetos de times diferentes, que nunca se cruzaram.
+2. A sigla PACS aparece com "significados" diferentes em sites de
+   terceiros, sem confirmação oficial — por isso usamos só a sigla
+   aqui. O exemplo de "compartilhar conta entre membros da casa" às
+   vezes citado como ABAC da Netflix também vem de um concorrente
+   (Aserto), não da própria Netflix — trate como pista, não como fato
+   confirmado.
 
 ---
 
-## Arquitetura do SpiceDB
+## Como o SpiceDB é organizado por dentro
 
 Fontes: <https://authzed.com/blog/spicedb-architecture>,
 <https://authzed.com/docs/spicedb/feature-overview>,
@@ -196,18 +203,17 @@ graph TB
     D -.consulta outras instâncias via hashing consistente.-> D2[Outra instância SpiceDB]
 ```
 
-- **Camada de API** — gRPC nativo e gateway HTTP/JSON.
-- **Graph Engine** — percorre o grafo de schema e relações para resolver
-  uma consulta de permissão.
-- **Dispatch** — coordena as operações Check, Expand e Lookup,
-  decompõe consultas em subproblemas cacheáveis e roteia entre
-  instâncias em topologia de cluster.
-- **Cache** — mecanismo único, aplicável tanto no cliente quanto no
-  servidor conforme posicionamento no pipeline.
-- **Datastore plugável** — PostgreSQL (usado nesta POC), CockroachDB,
-  MySQL, Google Spanner, ou modo em memória para testes.
+- **API** — recebe as perguntas (gRPC, ou HTTP/JSON pra quem não usa gRPC).
+- **Graph Engine** — o "cérebro": percorre o grafo de relações pra
+  responder se a permissão vale.
+- **Dispatch** — quebra uma pergunta grande em pedaços menores, guarda
+  em cache o que já foi calculado, e distribui entre várias instâncias
+  do SpiceDB quando ele roda em cluster.
+- **Datastore plugável** — onde os dados ficam guardados de verdade:
+  Postgres (o que esta POC usa), CockroachDB, MySQL, Spanner, ou até só
+  memória, pra testes.
 
-A documentação oficial delimita o escopo de aplicabilidade:
+A própria documentação avisa qual é o preço disso tudo:
 
 > "SpiceDB is an open-source, Google Zanzibar-inspired database system
 > for real-time, security-critical application permissions." [...]
@@ -215,46 +221,45 @@ A documentação oficial delimita o escopo de aplicabilidade:
 > is a **critical, low-latency, distributed system**."
 > — <https://authzed.com/docs/spicedb/feature-overview>
 
-Ou seja: adequação recomendada para autorização suficientemente
-complexa ou crítica para justificar um sistema dedicado, com o custo
-operacional correspondente de um componente distribuído sensível a
-latência.
+Resumindo: o SpiceDB compensa quando a autorização já ficou complicada
+ou crítica o bastante pra merecer um sistema só dela — e cobra o preço
+de ser mais uma peça de infraestrutura pra manter no ar.
 
 ---
 
-## Adequação de ReBAC ao escopo desta POC
+## E essa POC, onde ela se encaixa?
 
-Esta POC não reproduz a escala do PACS nem do caso de identidades de
-aplicação da Netflix — ambos fora de escopo. Ela cobre o cenário mais
-comum de modelagem de entitlement (plano de assinatura, produto avulso,
-tag de conteúdo, concessão direta) e, adicionalmente, uma instância
-verificada de extensão via Caveats.
+Esta POC não tenta ser do tamanho do PACS da Netflix, nem do caso das
+máquinas do artigo de Caveats — os dois estão fora de escopo. Ela cobre
+o caso mais comum: plano de assinatura, produto avulso, tag de
+conteúdo, concessão direta — e também já tem, implementado e
+conferido, um exemplo pequeno de Caveats.
 
-Para o núcleo modelado, ReBAC é adequado: assinatura, compra e concessão
-são **relações estáveis** — fatos que passam a existir com um evento de
-negócio e permanecem válidos até nova alteração, não atributos recalculados
-a cada requisição. Esse é o padrão de dado para o qual um grafo de
-relações foi projetado, incluindo a resolução nativa de múltiplos
-caminhos para uma mesma permissão; um catálogo de planos de assinatura
-é, não coincidentemente, um dos exemplos usados pela própria Authzed
-para demonstrar o SpiceDB.
+**Pro que esta POC modela hoje, ReBAC encaixa bem.** Assinar um plano,
+comprar um produto, ganhar uma tag — tudo isso é uma **relação
+estável**: um fato que nasce quando algo acontece (assinou, comprou) e
+continua valendo até mudar de novo. Não é um dado que muda a cada
+pergunta — é exatamente o que um grafo de relações resolve bem,
+inclusive quando tem mais de um caminho pra chegar na mesma permissão.
+Não é à toa que um catálogo com planos de assinatura é um dos exemplos
+que a própria Authzed usa pra mostrar o SpiceDB.
 
-A adequação declina quando a decisão depende de atributos avaliados no
-momento da requisição — licenciamento por região geográfica, sinais de
-fraude, tipo de dispositivo, janelas de tempo promocionais. Nesses
-casos, ReBAC puro exige uma relação por combinação de atributo,
-com custo de manutenção crescente. O precedente documentado (Netflix)
-para esse problema é a extensão do modelo ReBAC com Caveats, não a
-substituição do sistema. Esta POC implementa e verifica essa mesma
-extensão — uma relação `movie.region_locked_viewer` cuja tupla, escrita
-uma única vez, produz resultado distinto conforme o atributo de região
-fornecido a cada checagem (detalhes no artigo 2, seção "Caveats na
-prática").
+**Onde isso pararia de ser suficiente:** se a regra real da empresa
+precisar de coisas calculadas na hora — em que país a pessoa está
+agora, sinal de fraude, tipo de aparelho, uma promoção que só vale numa
+janela de tempo — aí o ReBAC puro começa a forçar a barra: você teria
+que escrever (e manter atualizada) uma relação pra cada combinação
+possível, em vez de simplesmente calcular na hora. O caminho que já tem
+precedente documentado pra esse problema não é trocar de motor — é
+**estender o SpiceDB com Caveats**, exatamente como a Netflix fez. Esta
+POC já fez essa mesma extensão, num exemplo pequeno: uma relação
+`movie.region_locked_viewer` que, escrita uma única vez, responde
+diferente dependendo da região informada em cada pergunta (ver artigo
+2, seção "Caveats na prática").
 
-Não há, nas fontes consultadas, evidência de que a Netflix tenha
-avaliado ReBAC para autorização de assinante e descartado essa opção em
-favor de ABAC; tal inferência excede o que os dados sustentam. O que se
-sustenta é o inverso: quando a organização necessitou de avaliação de
-atributos dentro de um sistema ReBAC já em produção, a solução adotada
-foi estender o mecanismo existente — precedente agora replicado, em
-escala reduzida, nesta implementação.
+Como já dissemos: não existe prova de que a Netflix tenha testado ReBAC
+pra assinante e trocado por ABAC. O que existe de fato é o contrário —
+quando a empresa precisou calcular atributos na hora, dentro de um
+sistema ReBAC que já estava em produção, a saída foi **estender** esse
+sistema, não substituí-lo. É esse mesmo caminho que esta POC repete, em
+escala bem menor.
