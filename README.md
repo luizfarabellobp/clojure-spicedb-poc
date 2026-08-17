@@ -19,7 +19,7 @@ em vez de relações pré-escritas. A própria **Netflix** patrocinou uma
 funcionalidade do SpiceDB (chamada *Caveats*) justamente para misturar os
 dois modelos, quando precisou autorizar identidades de infraestrutura
 baseadas em atributos dinâmicos — um caso documentado publicamente e
-citado com fonte no artigo completo.
+citado com fonte no artigo 1 (link abaixo).
 
 Esta POC testa o núcleo dessa família — ReBAC puro, para modelar planos
 de assinatura, produtos avulsos e tags de conteúdo — **e também
@@ -87,6 +87,7 @@ Outros comandos úteis:
 
 ```bash
 make logs   # acompanha os logs da app em tempo real (Ctrl+C só sai do log, não para a app)
+make db     # sobe só postgres + spicedb (sem a app) — útil pra inspecionar o banco pelo DBeaver/psql
 make help   # lista todos os comandos disponíveis
 ```
 
@@ -166,10 +167,14 @@ Profiles disponíveis: `small`, `medium`, `large` — ver `app/src/streaming_aut
 make reset   # apaga volumes (Postgres do zero, incluindo dados do SpiceDB)
 ```
 
-## Sem testes automatizados
+## Sem suíte de testes no código da aplicação
 
-Esta POC não tem suíte de testes (decisão explícita registrada em
-`CLAUDE.md`, bloco `tdd_gate`) — validação é manual, via os `curl` acima.
+Esta POC não tem testes automatizados de código (unitários, integração)
+— decisão explícita registrada em `CLAUDE.md`, bloco `tdd_gate`.
+Validação funcional é feita via os `curl` acima e/ou a collection do
+Postman (rodável também via `npx newman run`, sem interface gráfica) —
+não é uma suíte de testes da aplicação, é verificação de comportamento
+de fora pra dentro.
 
 ## Regras do projeto
 
