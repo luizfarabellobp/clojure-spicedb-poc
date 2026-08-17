@@ -1,6 +1,6 @@
 # Arquivos de configuração desta POC, explicados um por um
 
-> Artigo 3 de 5. Este não é sobre SpiceDB nem ReBAC — é sobre a
+> Artigo 3 de 4. Este não é sobre SpiceDB nem ReBAC — é sobre a
 > "engenharia de sustentação" do projeto: o que cada arquivo de
 > configuração faz, por que existe, e o que quebraria se ele não
 > existisse. Útil pra quem for abrir o projeto pela primeira vez e

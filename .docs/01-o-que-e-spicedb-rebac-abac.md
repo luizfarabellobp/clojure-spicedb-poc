@@ -1,11 +1,12 @@
 # O que é o SpiceDB (e por que ReBAC, ABAC e a Netflix aparecem nessa história)
 
-> Artigo 1 de 5. Este explica os conceitos gerais — de onde o SpiceDB
+> Artigo 1 de 4. Este explica os conceitos gerais — de onde o SpiceDB
 > vem, o que é ReBAC, o que é ABAC, e como a Netflix usa (e não usa)
 > cada um. Os próximos artigos em `.docs/` mostram como isso aparece no
-> código desta POC (2), o que cada arquivo de configuração faz (3), como
-> os dados ficam guardados no Postgres (4), e uma collection do Postman
-> com os cenários prontos pra testar (5).
+> código desta POC (2), o que cada arquivo de configuração faz (3), e
+> como os dados ficam guardados no Postgres (4). Há também uma collection
+> do Postman (`spicedb-poc.postman_collection.json`, sem numeração — é
+> ferramenta de teste, não artigo de leitura) com os cenários prontos.
 
 ## Para começar: o problema
 

@@ -32,7 +32,10 @@ da aplicação e o datastore interno do SpiceDB.
 2. [`.docs/02-como-o-spicedb-funciona-nesta-poc.md`](.docs/02-como-o-spicedb-funciona-nesta-poc.md) — o problema que esta POC resolve, as tabelas do banco, e como cada arquivo do código se encaixa.
 3. [`.docs/03-arquivos-de-configuracao-explicados.md`](.docs/03-arquivos-de-configuracao-explicados.md) — o que cada arquivo de configuração do projeto faz (docker-compose, Makefile, deps.edn, schema.zed, etc.).
 4. [`.docs/04-como-o-spicedb-guarda-dados-no-postgres.md`](.docs/04-como-o-spicedb-guarda-dados-no-postgres.md) — as tabelas internas do SpiceDB, com estrutura e exemplos de linha extraídos direto do banco local desta POC.
-5. [`.docs/05-spicedb-poc.postman_collection.json`](.docs/05-spicedb-poc.postman_collection.json) — collection do Postman com os cenários de teste (ver seção abaixo).
+
+Além dos 4 artigos acima, [`.docs/spicedb-poc.postman_collection.json`](.docs/spicedb-poc.postman_collection.json)
+é uma **ferramenta de teste**, não um artigo de leitura — por isso fica
+fora da numeração (ver seção "Testar os cenários de autorização" abaixo).
 
 ## Arquitetura
 
@@ -107,7 +110,7 @@ curl -s http://localhost:3000/movies/grinch/access   # sem token → 401
 | bob | avatar_3 | `allowed: true` (direct_viewer explícito) |
 | bob | grinch | `allowed: true` (plan:medium herda acesso a basic) |
 
-**Collection do Postman:** [`.docs/05-spicedb-poc.postman_collection.json`](.docs/05-spicedb-poc.postman_collection.json)
+**Collection do Postman:** [`.docs/spicedb-poc.postman_collection.json`](.docs/spicedb-poc.postman_collection.json)
 tem todos esses cenários prontos (mais os de Caveats e escrita de relação),
 já com os `pm.test` de cada um. Importe no Postman, gere os tokens com
 `make mint-token`, cole nas variáveis `alice_token`/`bob_token` da
