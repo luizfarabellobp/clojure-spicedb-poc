@@ -4,6 +4,44 @@ POC para avaliar a viabilidade do **SpiceDB** como motor de autorização
 (ReBAC — Relationship-Based Access Control) para conteúdos específicos de
 um sistema de streaming que já roda em Postgres.
 
+## Comece rápido (baixar, subir e testar)
+
+```bash
+git clone https://github.com/luizfarabellobp/clojure-spicedb-poc.git
+cd clojure-spicedb-poc
+
+make up
+```
+
+1. **Pré-requisitos:** só Docker instalado e **rodando** + `make` (já vem
+   por padrão no macOS/Linux) — nada de Clojure/Java/Postgres na sua
+   máquina, tudo roda em container. Ver detalhes na seção
+   [Pré-requisitos](#pré-requisitos) abaixo.
+2. `make up` builda a imagem, sobe os 4 containers na ordem certa e
+   espera a aplicação responder de verdade antes de devolver o terminal
+   (pode levar alguns minutos na primeira vez — as próximas são
+   rápidas). Quando terminar, mostra `Aplicação pronta em
+   http://localhost:3000`. Os usuários de teste `alice`/`bob` já vêm
+   com planos, produtos e filmes pré-carregados — sem seed manual.
+3. **Importe a collection do Postman**:
+   [`.docs/spicedb-poc.postman_collection.json`](.docs/spicedb-poc.postman_collection.json)
+   (Postman → *Import* → selecione o arquivo).
+4. Gere os tokens de teste e cole nas variáveis da collection:
+   ```bash
+   make mint-token USER_ID=alice
+   make mint-token USER_ID=bob
+   ```
+   No Postman, abra a collection → aba **Variables** → cole o token da
+   alice em `alice_token` e o do bob em `bob_token` → **Save**.
+5. Rode as 4 pastas da collection **em ordem** (clique com o botão
+   direito na collection → *Run collection*, ou execute pasta por
+   pasta). A pasta 4 escreve/altera dados — se quiser rodar tudo de novo
+   do zero, `make reset && make up` antes.
+
+Pronto — isso já cobre os cenários de plano/produto/tag/acesso direto,
+Caveats (ABAC por região) e escrita de relação em runtime, todos com
+`pm.test` conferindo o resultado esperado automaticamente.
+
 ## Em resumo: o que é o SpiceDB e por que ele está aqui
 
 A pergunta que toda aplicação com controle de acesso precisa responder é
@@ -35,7 +73,7 @@ da aplicação e o datastore interno do SpiceDB.
 
 Além dos 4 artigos acima, [`.docs/spicedb-poc.postman_collection.json`](.docs/spicedb-poc.postman_collection.json)
 é uma **ferramenta de teste**, não um artigo de leitura — por isso fica
-fora da numeração (ver seção "Testar os cenários de autorização" abaixo).
+fora da numeração (é o mesmo arquivo usado no "Comece rápido" acima).
 
 ## Arquitetura
 
@@ -51,37 +89,21 @@ fora da numeração (ver seção "Testar os cenários de autorização" abaixo).
 - [Docker](https://docs.docker.com/get-docker/) instalado e **rodando**
   (Docker Desktop no Mac/Windows, Docker Engine no Linux).
 - `make` (já vem por padrão no macOS e na maioria das distribuições Linux).
+- Opcional, só se for testar pelo Postman: o [Postman](https://www.postman.com/downloads/) instalado (ou o CLI `newman`, via `npx newman`).
 
 Não precisa instalar Clojure, Java, Postgres nem SpiceDB na sua máquina —
 tudo roda dentro dos containers.
 
-## Como rodar do zero
+## Detalhes de `make up` e outros comandos
 
-```bash
-git clone https://github.com/luizfarabellobp/clojure-spicedb-poc.git
-cd clojure-spicedb-poc
-
-make up
-```
-
-Isso faz tudo sozinho, sem passo manual nenhum:
+`make up` (já usado no "Comece rápido") faz isso, sem passo manual nenhum:
 
 1. Gera um `.env` local com secrets de desenvolvimento aleatórias (só para
    uso local — nunca reutilize esses valores em produção).
-2. Builda a imagem da aplicação e baixa as imagens do Postgres/SpiceDB
-   (pode levar alguns minutos na primeira vez — as próximas são rápidas).
+2. Builda a imagem da aplicação e baixa as imagens do Postgres/SpiceDB.
 3. Sobe os containers na ordem certa (Postgres → migration do SpiceDB →
    SpiceDB → aplicação).
-4. Espera a aplicação responder de verdade antes de devolver o terminal,
-   e então mostra:
-
-   ```
-   Aplicação pronta em http://localhost:3000
-   ```
-
-A partir daí, dois usuários de teste (`alice` e `bob`) já existem com
-planos, produtos e filmes pré-carregados automaticamente — não é preciso
-rodar nenhuma seed manual para testar os cenários abaixo.
+4. Espera a aplicação responder de verdade antes de devolver o terminal.
 
 Outros comandos úteis:
 
@@ -91,7 +113,26 @@ make db     # sobe só postgres + spicedb (sem a app) — útil pra inspecionar 
 make help   # lista todos os comandos disponíveis
 ```
 
-## Testar os cenários de autorização
+## Testar pelo Postman (recomendado)
+
+Já coberto no "Comece rápido" acima — resumindo os passos:
+
+1. Importe [`.docs/spicedb-poc.postman_collection.json`](.docs/spicedb-poc.postman_collection.json) no Postman.
+2. Gere os tokens: `make mint-token USER_ID=alice` e `make mint-token USER_ID=bob`.
+3. Cole nas variáveis `alice_token`/`bob_token` da collection (aba *Variables*).
+4. Rode as 4 pastas em ordem (a pasta 4 altera dados no banco).
+
+A collection cobre health, os 5 cenários de ReBAC (plano, produto avulso,
+acesso direto, herança, 401 sem token), os 3 cenários de Caveats/ABAC por
+região, e a escrita de relações em runtime (com e sem Caveat) — cada
+requisição já com `pm.test` conferindo status e corpo esperado. Validada
+com `npx newman run` contra a API real: 16/16 requisições, 31/31
+assertions, zero falhas.
+
+## Testar via curl (referência manual)
+
+Se preferir terminal em vez do Postman, os mesmos cenários funcionam via
+`curl`:
 
 ```bash
 ALICE_JWT=$(make mint-token USER_ID=alice | tail -1)
@@ -111,15 +152,7 @@ curl -s http://localhost:3000/movies/grinch/access   # sem token → 401
 | bob | avatar_3 | `allowed: true` (direct_viewer explícito) |
 | bob | grinch | `allowed: true` (plan:medium herda acesso a basic) |
 
-**Collection do Postman:** [`.docs/spicedb-poc.postman_collection.json`](.docs/spicedb-poc.postman_collection.json)
-tem todos esses cenários prontos (mais os de Caveats e escrita de relação),
-já com os `pm.test` de cada um. Importe no Postman, gere os tokens com
-`make mint-token`, cole nas variáveis `alice_token`/`bob_token` da
-collection, e rode as pastas em ordem (a pasta 4 muda o estado do banco).
-Validada com `npx newman run` contra a API real: 16/16 requisições, 31/31
-assertions.
-
-## Alterar relações em runtime
+### Alterar relações em runtime (também na pasta 4 da collection)
 
 ```bash
 curl -s -X POST http://localhost:3000/relationships \
@@ -127,7 +160,7 @@ curl -s -X POST http://localhost:3000/relationships \
   -d '{"resource-type":"movie","resource-id":"avatar_3","relation":"direct_viewer","subject-type":"user","subject-id":"alice"}'
 ```
 
-## Caveats (ABAC dentro do ReBAC) — atributo avaliado na hora
+### Caveats — ABAC dentro do ReBAC (também na pasta 3 da collection)
 
 O filme `filme_regional` só é liberado pra `alice` dentro de uma região
 (`BR`/`AR`), avaliada em tempo real a cada checagem — não é uma coluna
@@ -171,10 +204,9 @@ make reset   # apaga volumes (Postgres do zero, incluindo dados do SpiceDB)
 
 Esta POC não tem testes automatizados de código (unitários, integração)
 — decisão explícita registrada em `CLAUDE.md`, bloco `tdd_gate`.
-Validação funcional é feita via os `curl` acima e/ou a collection do
-Postman (rodável também via `npx newman run`, sem interface gráfica) —
-não é uma suíte de testes da aplicação, é verificação de comportamento
-de fora pra dentro.
+Validação funcional é feita via a collection do Postman/`npx newman run`
+e/ou os `curl` acima — não é uma suíte de testes da aplicação, é
+verificação de comportamento de fora pra dentro.
 
 ## Regras do projeto
 
