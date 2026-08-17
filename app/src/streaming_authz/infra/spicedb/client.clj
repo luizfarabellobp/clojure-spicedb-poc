@@ -94,14 +94,19 @@
                       (.build))))
 
   (write-relationships! [_ tuples]
-    (let [builder (WriteRelationshipsRequest/newBuilder)]
-      (doseq [tuple tuples]
-        (.addUpdates builder
-          (-> (RelationshipUpdate/newBuilder)
-              (.setOperation RelationshipUpdate$Operation/OPERATION_TOUCH)
-              (.setRelationship (relationship->pb tuple))
-              (.build))))
-      (.writeRelationships permissions-stub (.build builder))))
+    ;; O SpiceDB rejeita mais de MaximumUpdatesPerWrite (1000, visto na
+    ;; config dele) atualizações numa única WriteRelationships — por
+    ;; isso quebramos em lotes menores para volumes grandes (seed de
+    ;; teste de carga).
+    (doseq [chunk (partition-all 900 tuples)]
+      (let [builder (WriteRelationshipsRequest/newBuilder)]
+        (doseq [tuple chunk]
+          (.addUpdates builder
+            (-> (RelationshipUpdate/newBuilder)
+                (.setOperation RelationshipUpdate$Operation/OPERATION_TOUCH)
+                (.setRelationship (relationship->pb tuple))
+                (.build))))
+        (.writeRelationships permissions-stub (.build builder)))))
 
   (check-permission [_ {:keys [resource-type resource-id permission subject-id context]}]
     (let [req (cond-> (CheckPermissionRequest/newBuilder)

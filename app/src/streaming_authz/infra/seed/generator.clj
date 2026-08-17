@@ -10,9 +10,14 @@
             [clojure.tools.logging :as log]))
 
 (def profile->counts
-  {:small  {:users 20   :movies 15  :relations-per-user 3}
-   :medium {:users 200  :movies 80  :relations-per-user 5}
-   :large  {:users 2000 :movies 300 :relations-per-user 8}})
+  {:small    {:users 20   :movies 15  :relations-per-user 3}
+   :medium   {:users 200  :movies 80  :relations-per-user 5}
+   :large    {:users 2000 :movies 300 :relations-per-user 8}
+   ;; :massive não amostra — gera o produto cartesiano de verdade
+   ;; (todo usuário × todo filme, via direct_viewer), pra testar o
+   ;; comportamento do SpiceDB com um grafo denso de relações, não só
+   ;; numeroso. 300 × 300 = 90.000 relações.
+   :massive  {:users 300  :movies 300 :cartesian? true}})
 
 (def ^:private countries ["BR" "US" "AR" "PT" "MX"])
 (def ^:private genres ["Ação" "Comédia" "Drama" "Ficção Científica" "Documentário" "Terror"])
@@ -44,12 +49,18 @@
          {:resource-type "movie" :resource-id (:id movie)
           :relation "direct_viewer" :subject-type "user" :subject-id (:id user)})))
 
+(defn- gen-relations-cartesian [users movies]
+  (vec (for [user users
+             movie movies]
+         {:resource-type "movie" :resource-id (:id movie)
+          :relation "direct_viewer" :subject-type "user" :subject-id (:id user)})))
+
 (defn run! [{:keys [profile] :or {profile :small}}]
   (let [profile (keyword profile)
         counts (get profile->counts profile)]
     (when-not counts
-      (throw (ex-info "profile inválido, use :small, :medium ou :large" {:profile profile})))
-    (let [{:keys [users movies relations-per-user]} counts
+      (throw (ex-info "profile inválido, use :small, :medium, :large ou :massive" {:profile profile})))
+    (let [{:keys [users movies relations-per-user cartesian?]} counts
           rng (java.util.Random. (hash profile))
           config (config/load-config)
           spicedb (component/start (spicedb-client/new-spicedb-client (:spicedb config)))
@@ -57,7 +68,9 @@
           ds (:datasource ds-component)
           gen-users-data (gen-users users)
           gen-movies-data (gen-movies movies)
-          relations (gen-relations rng gen-users-data gen-movies-data relations-per-user)]
+          relations (if cartesian?
+                      (gen-relations-cartesian gen-users-data gen-movies-data)
+                      (gen-relations rng gen-users-data gen-movies-data relations-per-user))]
       (log/info "Seeding profile" profile "-" users "users," movies "movies," (count relations) "relações")
       (doseq [user gen-users-data] (users-repo/upsert! ds user))
       (doseq [movie gen-movies-data] (movies-repo/upsert! ds movie))

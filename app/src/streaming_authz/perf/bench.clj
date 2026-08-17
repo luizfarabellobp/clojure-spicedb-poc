@@ -39,15 +39,20 @@
     (repeatedly n #(timed-ms (fn [] (authz/lookup-resources spicedb
                                        {:resource-type "movie" :permission "view" :subject-id subject-id}))))))
 
-(defn run! [{:keys [profile iterations] :or {profile :small iterations 100}}]
+(defn run! [{:keys [profile iterations check-resource-id multi-check-resource-id check-subject-id lookup-subject-id]
+             :or {profile :small iterations 100
+                  check-resource-id "grinch"
+                  multi-check-resource-id "duro_de_matar"
+                  check-subject-id "alice"
+                  lookup-subject-id "alice"}}]
   (let [config (config/load-config)
         spicedb (component/start (spicedb-client/new-spicedb-client (:spicedb config)))
         results {:profile profile
                  :timestamp (str (Instant/now))
                  :iterations iterations
-                 :simple-check (bench-check spicedb "grinch" "alice" iterations)
-                 :multi-path-check (bench-check spicedb "duro_de_matar" "alice" iterations)
-                 :lookup-resources (bench-lookup spicedb "alice" iterations)}
+                 :simple-check (bench-check spicedb check-resource-id check-subject-id iterations)
+                 :multi-path-check (bench-check spicedb multi-check-resource-id check-subject-id iterations)
+                 :lookup-resources (bench-lookup spicedb lookup-subject-id iterations)}
         report-path (str "target/perf-report-" (name profile) "-" (System/currentTimeMillis) ".edn")]
     (io/make-parents report-path)
     (spit report-path (with-out-str (pprint/pprint results)))

@@ -193,7 +193,48 @@ make bench PROFILE=medium ITERATIONS=100
 docker compose exec app sh -c 'cat $(ls -t target/perf-report-medium-*.edn | head -1)'
 ```
 
-Profiles disponíveis: `small`, `medium`, `large` — ver `app/src/streaming_authz/infra/seed/generator.clj`.
+Profiles disponíveis: `small`, `medium`, `large`, `massive` — ver `app/src/streaming_authz/infra/seed/generator.clj`.
+
+### Caso de teste: produto cartesiano (grafo denso, não só numeroso)
+
+O profile `massive` não faz amostragem como os outros — ele gera o
+produto cartesiano completo entre usuários e filmes (300 × 300 =
+90.000 relações `direct_viewer`), pra testar o SpiceDB com um grafo
+**denso**, não só grande. Escrever esse volume de uma vez esbarra num
+limite real do SpiceDB (`MaximumUpdatesPerWrite`, 1000 atualizações por
+chamada) — por isso `write-relationships!` quebra automaticamente em
+lotes de 900.
+
+```bash
+make seed PROFILE=massive   # escreve 90.000 relações em lotes (~5s no total)
+
+# aponta o benchmark pra um usuário/filme gerados, em vez dos fixos da seed padrão
+docker compose exec app clojure -X:bench :profile :massive :iterations 50 \
+  :check-resource-id '"gen-movie-0"' :multi-check-resource-id '"gen-movie-150"' \
+  :check-subject-id '"gen-user-0"' :lookup-subject-id '"gen-user-0"'
+```
+
+Resultado real, medido localmente (90.014 tuplas no grafo, incluindo a
+seed fixa):
+
+| Operação | p50 | p95 | p99 |
+|---|---|---|---|
+| `check-permission` (uma relação `direct_viewer`) | ~1,5 ms | ~2,6 ms | ~9–157 ms* |
+| `lookup-resources` (retorna 300 filmes) | ~18,5 ms | ~23,5 ms | ~55,6 ms |
+
+\* variação alta no p99 do `check-permission` em uma das execuções — não
+investigamos a fundo se é ruído do ambiente local (Docker Desktop) ou
+um padrão real; registrado aqui em vez de omitido.
+
+Achado principal: `check-permission` continua rápido mesmo com 90 mil
+tuplas no grafo (bem parecido com o resultado dos profiles menores,
+com poucas centenas de relações) — mas `lookup-resources` fica
+visivelmente mais lento quando o **resultado** tem muitos itens (300
+filmes retornados, contra 2-3 nos profiles menores). Ou seja, o custo
+parece escalar mais com o tamanho da resposta do que com o tamanho
+total do grafo — mas isso é uma observação de um teste local único, não
+um benchmark rigoroso (sem múltiplas repetições, sem isolar variância
+de ambiente).
 
 ## Resetar o ambiente
 
