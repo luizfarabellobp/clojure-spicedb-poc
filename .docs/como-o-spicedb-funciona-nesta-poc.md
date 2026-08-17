@@ -101,7 +101,9 @@ Por que separar assim, em vez de um Postgres só com tudo junto?
 1. **O SpiceDB é dono das próprias tabelas.** As tabelas dentro da
    database `spicedb` — vimos nomes reais como `relation_tuple`,
    `namespace_config`, `caveat`, `relation_tuple_transaction` rodando
-   durante a migration desta POC — são geridas inteiramente pelo binário
+   durante a migration desta POC (estrutura e exemplos de linha reais em
+   `.docs/como-o-spicedb-guarda-dados-no-postgres.md`) — são geridas
+   inteiramente pelo binário
    do SpiceDB (`spicedb migrate head`). Ninguém no nosso código Clojure
    faz `SELECT` nelas. É "propriedade privada" do SpiceDB, e mexer nelas
    por fora seria como editar o arquivo de um banco de dados enquanto

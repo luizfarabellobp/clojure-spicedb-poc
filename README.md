@@ -30,6 +30,7 @@ da aplicação e o datastore interno do SpiceDB.
 **Leitura completa, com todas as referências e o passo a passo do código:**
 - [`.docs/o-que-e-spicedb-rebac-abac.md`](.docs/o-que-e-spicedb-rebac-abac.md) — Zanzibar, ReBAC, ABAC, arquitetura do SpiceDB e o caso Netflix, com fontes.
 - [`.docs/como-o-spicedb-funciona-nesta-poc.md`](.docs/como-o-spicedb-funciona-nesta-poc.md) — o problema que esta POC resolve, as tabelas do banco, e como cada arquivo do código se encaixa.
+- [`.docs/como-o-spicedb-guarda-dados-no-postgres.md`](.docs/como-o-spicedb-guarda-dados-no-postgres.md) — as tabelas internas do SpiceDB, com estrutura e exemplos de linha extraídos direto do banco local desta POC.
 
 ## Arquitetura
 
