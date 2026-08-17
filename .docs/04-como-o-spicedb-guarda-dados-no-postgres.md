@@ -1,6 +1,6 @@
 # Como o SpiceDB guarda dados no Postgres (com exemplos reais desta POC)
 
-> Artigo 4 de 4. O SpiceDB é o "intérprete" dos dados que ele mesmo
+> Artigo 4 de 5. O SpiceDB é o "intérprete" dos dados que ele mesmo
 > guarda no Postgres — aqui está exatamente o que isso significa,
 > tabela por tabela, com linhas de verdade tiradas do banco desta POC
 > (não inventadas). Ver `02-como-o-spicedb-funciona-nesta-poc.md` pro

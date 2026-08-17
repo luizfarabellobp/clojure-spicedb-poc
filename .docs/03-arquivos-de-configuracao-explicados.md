@@ -1,6 +1,6 @@
 # Arquivos de configuração desta POC, um por um
 
-> Artigo 3 de 4. Não é sobre SpiceDB nem ReBAC — é sobre "o que é esse
+> Artigo 3 de 5. Não é sobre SpiceDB nem ReBAC — é sobre "o que é esse
 > arquivo aqui": o que cada arquivo de configuração do projeto faz, por
 > que existe, e o que quebraria sem ele.
 

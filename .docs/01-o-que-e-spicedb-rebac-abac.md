@@ -1,10 +1,11 @@
 # O que é o SpiceDB (explicado do jeito mais simples possível)
 
-> Artigo 1 de 4. Aqui você entende de onde o SpiceDB veio, o que é
+> Artigo 1 de 5. Aqui você entende de onde o SpiceDB veio, o que é
 > ReBAC, o que é ABAC, e como a Netflix usa isso. Os próximos artigos
 > mostram como tudo isso aparece no código desta POC (2), o que cada
-> arquivo de configuração faz (3), e como os dados ficam guardados no
-> Postgres (4). Tem também uma collection do Postman
+> arquivo de configuração faz (3), como os dados ficam guardados no
+> Postgres (4), e quais outras ferramentas fazem esse mesmo tipo de
+> trabalho (5). Tem também uma collection do Postman
 > (`spicedb-poc.postman_collection.json`) pra testar tudo na prática.
 
 ## O problema, em uma frase
@@ -187,19 +188,6 @@ verifica funcionando. A existência do PACS não é um voto contra o
 ReBAC — é só um dado sobre o que a Netflix já tinha, numa época
 específica, sem ligação comprovada com o SpiceDB.
 
-Duas ressalvas pra não concluir mais do que as fontes garantem:
-1. Não existe fonte que ligue o PACS ao SpiceDB, nem prova de que a
-   Netflix tenha testado ReBAC pra assinantes e trocado por ABAC — a
-   talk do PACS é de 2022, o artigo de Caveats é de 2023, e a explicação
-   mais simples é que são projetos de times diferentes, que nunca se
-   cruzaram.
-2. A sigla PACS aparece com "significados" diferentes em sites de
-   terceiros, sem confirmação oficial — por isso usamos só a sigla
-   aqui. O exemplo de "compartilhar conta entre membros da casa" às
-   vezes citado como ABAC da Netflix também vem de um concorrente
-   (Aserto), não da própria Netflix — trate como pista, não como fato
-   confirmado.
-
 ---
 
 ## Como o SpiceDB é organizado por dentro
@@ -277,3 +265,8 @@ quando a empresa precisou calcular atributos na hora, dentro de um
 sistema ReBAC que já estava em produção, a saída foi **estender** esse
 sistema, não substituí-lo. É esse mesmo caminho que esta POC repete, em
 escala bem menor.
+
+O SpiceDB também não é a única ferramenta capaz de resolver esse tipo de
+problema — ver o artigo 5 (`05-alternativas-ao-spicedb.md`) pra conhecer
+outras opções (OpenFGA, Ory Keto, OPA, AWS Cedar, Casbin) e por que esta
+POC escolheu o SpiceDB mesmo assim.

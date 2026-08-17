@@ -1,10 +1,11 @@
 # Como o SpiceDB funciona nesta POC
 
-> Artigo 2 de 4. O artigo 1 explica as ideias gerais (ReBAC, ABAC,
+> Artigo 2 de 5. O artigo 1 explica as ideias gerais (ReBAC, ABAC,
 > Zanzibar, o caso da Netflix). Este aqui mostra exatamente como isso
 > vira código, schema e tabelas nesta POC específica. Os próximos
-> explicam os arquivos de configuração (3) e como os dados ficam
-> guardados no Postgres (4). A collection do Postman
+> explicam os arquivos de configuração (3), como os dados ficam
+> guardados no Postgres (4), e outras ferramentas parecidas com o
+> SpiceDB (5). A collection do Postman
 > (`spicedb-poc.postman_collection.json`) tem tudo pronto pra testar.
 
 ## O problema que esta POC resolve
