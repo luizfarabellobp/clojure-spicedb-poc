@@ -1,11 +1,13 @@
 # Como o SpiceDB guarda dados no Postgres (com exemplos reais desta POC)
 
-> Este artigo responde de forma concreta a uma pergunta que já discutimos
-> na prática: o SpiceDB é o "intérprete" dos dados que ele mesmo salva no
-> Postgres, certo? Sim — e aqui está exatamente o que isso significa,
-> tabela por tabela, com linhas reais extraídas do banco desta POC (não
-> inventadas). Ver `como-o-spicedb-funciona-nesta-poc.md` para o contexto
-> geral e `o-que-e-spicedb-rebac-abac.md` para a teoria de ReBAC/ABAC.
+> Artigo 4 de 5. Responde de forma concreta a uma pergunta que já
+> discutimos na prática: o SpiceDB é o "intérprete" dos dados que ele
+> mesmo salva no Postgres, certo? Sim — e aqui está exatamente o que
+> isso significa, tabela por tabela, com linhas reais extraídas do banco
+> desta POC (não inventadas). Ver `02-como-o-spicedb-funciona-nesta-poc.md`
+> para o contexto geral, `01-o-que-e-spicedb-rebac-abac.md` para a teoria
+> de ReBAC/ABAC, e `05-spicedb-poc.postman_collection.json` pra testar
+> tudo isso na prática.
 
 ## O princípio, confirmado de novo antes de entrar nos detalhes
 

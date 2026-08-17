@@ -1,9 +1,11 @@
 # O que é o SpiceDB (e por que ReBAC, ABAC e a Netflix aparecem nessa história)
 
-> Artigo 1 de 2. Este explica os conceitos gerais — de onde o SpiceDB
+> Artigo 1 de 5. Este explica os conceitos gerais — de onde o SpiceDB
 > vem, o que é ReBAC, o que é ABAC, e como a Netflix usa (e não usa)
-> cada um. O segundo artigo (`como-o-spicedb-funciona-nesta-poc.md`)
-> mostra exatamente como isso tudo aparece no código desta POC.
+> cada um. Os próximos artigos em `.docs/` mostram como isso aparece no
+> código desta POC (2), o que cada arquivo de configuração faz (3), como
+> os dados ficam guardados no Postgres (4), e uma collection do Postman
+> com os cenários prontos pra testar (5).
 
 ## Para começar: o problema
 
@@ -157,7 +159,7 @@ dentro de uma faixa permitida.
 
 Esta POC implementa o mesmo padrão, com uma condição de região
 geográfica em vez de IP — testado ao vivo, não só citado. Ver
-`.docs/como-o-spicedb-funciona-nesta-poc.md`, seção "Caveats na
+`.docs/02-como-o-spicedb-funciona-nesta-poc.md`, seção "Caveats na
 prática".
 
 Isso não foi um capricho de arquitetura — **foi a Netflix que
@@ -319,7 +321,7 @@ implementou e testou ao vivo exatamente esse caminho de saída**: uma
 relação `movie.region_locked_viewer`, restrita por região geográfica,
 onde a mesma tupla gravada uma única vez responde `true` ou `false`
 dependendo do atributo enviado no momento da checagem — ver
-`.docs/como-o-spicedb-funciona-nesta-poc.md`, seção "Caveats na
+`.docs/02-como-o-spicedb-funciona-nesta-poc.md`, seção "Caveats na
 prática", para o schema, o código e os comandos `curl` que provam isso
 rodando. Não existe, nas fontes usadas aqui, nenhuma evidência de que a
 Netflix tenha avaliado ReBAC para autorização de assinante e o
@@ -334,5 +336,5 @@ real da empresa precisar desses atributos, o caminho com precedente
 documentado (Netflix) e agora também com precedente próprio (esta POC)
 é estender com Caveats, não trocar de abordagem.
 
-Ver `.docs/como-o-spicedb-funciona-nesta-poc.md` para como isso vira
+Ver `.docs/02-como-o-spicedb-funciona-nesta-poc.md` para como isso vira
 código, schema e tabelas, nesta implementação específica.

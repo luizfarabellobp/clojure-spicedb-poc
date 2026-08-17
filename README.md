@@ -27,10 +27,12 @@ implementa e testa ao vivo um exemplo real de Caveats** (restrição por
 região geográfica), com Postgres compartilhado entre os dados de negócio
 da aplicação e o datastore interno do SpiceDB.
 
-**Leitura completa, com todas as referências e o passo a passo do código:**
-- [`.docs/o-que-e-spicedb-rebac-abac.md`](.docs/o-que-e-spicedb-rebac-abac.md) — Zanzibar, ReBAC, ABAC, arquitetura do SpiceDB e o caso Netflix, com fontes.
-- [`.docs/como-o-spicedb-funciona-nesta-poc.md`](.docs/como-o-spicedb-funciona-nesta-poc.md) — o problema que esta POC resolve, as tabelas do banco, e como cada arquivo do código se encaixa.
-- [`.docs/como-o-spicedb-guarda-dados-no-postgres.md`](.docs/como-o-spicedb-guarda-dados-no-postgres.md) — as tabelas internas do SpiceDB, com estrutura e exemplos de linha extraídos direto do banco local desta POC.
+**Leitura completa, em ordem, com todas as referências e o passo a passo do código:**
+1. [`.docs/01-o-que-e-spicedb-rebac-abac.md`](.docs/01-o-que-e-spicedb-rebac-abac.md) — Zanzibar, ReBAC, ABAC, arquitetura do SpiceDB e o caso Netflix, com fontes.
+2. [`.docs/02-como-o-spicedb-funciona-nesta-poc.md`](.docs/02-como-o-spicedb-funciona-nesta-poc.md) — o problema que esta POC resolve, as tabelas do banco, e como cada arquivo do código se encaixa.
+3. [`.docs/03-arquivos-de-configuracao-explicados.md`](.docs/03-arquivos-de-configuracao-explicados.md) — o que cada arquivo de configuração do projeto faz (docker-compose, Makefile, deps.edn, schema.zed, etc.).
+4. [`.docs/04-como-o-spicedb-guarda-dados-no-postgres.md`](.docs/04-como-o-spicedb-guarda-dados-no-postgres.md) — as tabelas internas do SpiceDB, com estrutura e exemplos de linha extraídos direto do banco local desta POC.
+5. [`.docs/05-spicedb-poc.postman_collection.json`](.docs/05-spicedb-poc.postman_collection.json) — collection do Postman com os cenários de teste (ver seção abaixo).
 
 ## Arquitetura
 
@@ -105,7 +107,7 @@ curl -s http://localhost:3000/movies/grinch/access   # sem token → 401
 | bob | avatar_3 | `allowed: true` (direct_viewer explícito) |
 | bob | grinch | `allowed: true` (plan:medium herda acesso a basic) |
 
-**Collection do Postman:** [`.docs/spicedb-poc.postman_collection.json`](.docs/spicedb-poc.postman_collection.json)
+**Collection do Postman:** [`.docs/05-spicedb-poc.postman_collection.json`](.docs/05-spicedb-poc.postman_collection.json)
 tem todos esses cenários prontos (mais os de Caveats e escrita de relação),
 já com os `pm.test` de cada um. Importe no Postman, gere os tokens com
 `make mint-token`, cole nas variáveis `alice_token`/`bob_token` da
@@ -143,7 +145,7 @@ curl -s -X POST http://localhost:3000/relationships \
        "caveat":{"name":"region_allowed","context":{"allowed_regions":["PT"]}}}'
 ```
 
-Ver `.docs/como-o-spicedb-funciona-nesta-poc.md`, seção "Caveats na prática", para a explicação completa.
+Ver `.docs/02-como-o-spicedb-funciona-nesta-poc.md`, seção "Caveats na prática", para a explicação completa.
 
 ## Seed volumétrica e performance
 

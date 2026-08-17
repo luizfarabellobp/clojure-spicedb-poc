@@ -1,9 +1,12 @@
 # Como o SpiceDB funciona nesta POC
 
-> Artigo 2 de 2. O primeiro (`o-que-e-spicedb-rebac-abac.md`) explica os
-> conceitos gerais — ReBAC, ABAC, Zanzibar, o caso da Netflix. Este aqui
-> é o "olha o motor por dentro": explica exatamente o que acontece nesta
-> POC específica, arquivo por arquivo, tabela por tabela.
+> Artigo 2 de 5. O primeiro (`01-o-que-e-spicedb-rebac-abac.md`) explica
+> os conceitos gerais — ReBAC, ABAC, Zanzibar, o caso da Netflix. Este
+> aqui é o "olha o motor por dentro": explica exatamente o que acontece
+> nesta POC específica, arquivo por arquivo, tabela por tabela. Os
+> próximos explicam os arquivos de configuração (3), o formato de
+> armazenamento no Postgres com exemplos reais (4), e trazem uma
+> collection do Postman pra testar (5).
 
 ## O problema que esta POC tenta resolver
 
@@ -102,7 +105,7 @@ Por que separar assim, em vez de um Postgres só com tudo junto?
    database `spicedb` — vimos nomes reais como `relation_tuple`,
    `namespace_config`, `caveat`, `relation_tuple_transaction` rodando
    durante a migration desta POC (estrutura e exemplos de linha reais em
-   `.docs/como-o-spicedb-guarda-dados-no-postgres.md`) — são geridas
+   `.docs/04-como-o-spicedb-guarda-dados-no-postgres.md`) — são geridas
    inteiramente pelo binário
    do SpiceDB (`spicedb migrate head`). Ninguém no nosso código Clojure
    faz `SELECT` nelas. É "propriedade privada" do SpiceDB, e mexer nelas
