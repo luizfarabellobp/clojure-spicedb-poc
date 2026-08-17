@@ -68,7 +68,7 @@ da aplicação e o datastore interno do SpiceDB.
 **Leitura completa, em ordem, com todas as referências e o passo a passo do código:**
 1. [`.docs/01-o-que-e-spicedb-rebac-abac.md`](.docs/01-o-que-e-spicedb-rebac-abac.md) — Zanzibar, ReBAC, ABAC, arquitetura do SpiceDB e o caso Netflix, com fontes.
 2. [`.docs/02-como-o-spicedb-funciona-nesta-poc.md`](.docs/02-como-o-spicedb-funciona-nesta-poc.md) — o problema que esta POC resolve, as tabelas do banco, e como cada arquivo do código se encaixa.
-3. [`.docs/03-arquivos-de-configuracao-explicados.md`](.docs/03-arquivos-de-configuracao-explicados.md) — o que cada arquivo de configuração do projeto faz (docker-compose, Makefile, deps.edn, schema.zed, etc.).
+3. [`.docs/03-arquivos-de-configuracao-explicados.md`](.docs/03-arquivos-de-configuracao-explicados.md) — mapa de toda a estrutura do projeto (pasta por pasta) e o que cada arquivo de configuração faz (docker-compose, Makefile, deps.edn, schema.zed, etc.).
 4. [`.docs/04-como-o-spicedb-guarda-dados-no-postgres.md`](.docs/04-como-o-spicedb-guarda-dados-no-postgres.md) — as tabelas internas do SpiceDB, com estrutura e exemplos de linha extraídos direto do banco local desta POC.
 5. [`.docs/05-alternativas-ao-spicedb.md`](.docs/05-alternativas-ao-spicedb.md) — outras ferramentas do mesmo espaço (OpenFGA, Ory Keto, OPA, AWS Cedar, Casbin) e por que esta POC escolheu o SpiceDB.
 

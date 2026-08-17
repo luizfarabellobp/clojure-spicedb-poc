@@ -1,7 +1,8 @@
-# Arquivos de configuração desta POC, um por um
+# Estrutura do projeto e arquivos de configuração, um por um
 
-> Artigo 3 de 5. Não é sobre SpiceDB nem ReBAC — é sobre "o que é esse
-> arquivo aqui": o que cada arquivo de configuração do projeto faz, por
+> Artigo 3 de 5. Não é sobre SpiceDB nem ReBAC — é sobre "o que é essa
+> pasta/esse arquivo aqui": um mapa de toda a árvore do projeto, e
+> depois, com mais detalhe, o que cada arquivo de configuração faz, por
 > que existe, e o que quebraria sem ele.
 
 ## Quem lê o quê
@@ -19,6 +20,77 @@ graph LR
     CFG[app/resources/config.edn] -->|lido pela app via Aero| APP[app - Clojure]
     SCH[app/resources/schema.zed] -->|enviado ao SpiceDB no boot| SD
 ```
+
+---
+
+## Mapa completo do projeto: cada pasta e arquivo
+
+Antes de entrar arquivo por arquivo, aqui está a árvore inteira do
+repositório, com uma frase pra cada coisa. As seções seguintes deste
+artigo explicam com mais detalhe os arquivos de configuração; o código
+Clojure (`app/src/`) já tem seu próprio passeio guiado no artigo 2 — a
+lista abaixo é só o mapa, pra você achar rápido o que procura.
+
+```
+poc-authz/
+├── README.md                      → como rodar, cenários de teste, atalhos
+├── CLAUDE.md                      → regras do template/empresa (fora do escopo desta POC)
+├── SECURITY_GUIDE.md              → guia de segurança do template (idem)
+├── .gitignore                     → o que não vai pro repositório (.env, caches, etc.)
+├── Makefile                       → atalhos pra rodar tudo (ver seção abaixo)
+├── docker-compose.yml             → os 4 serviços da POC (ver seção abaixo)
+│
+├── .docs/                         → os 5 artigos que você está lendo, mais a collection do Postman
+│
+├── postgres/init/                 → scripts SQL que rodam sozinhos na 1ª subida (ver seção abaixo)
+│   ├── 001_create_databases.sql
+│   └── 002_create_app_schema.sql
+│
+└── app/                           → a aplicação Clojure
+    ├── Dockerfile                 → como a imagem da app é montada (ver seção abaixo)
+    ├── deps.edn                   → dependências e comandos prontos (ver seção abaixo)
+    ├── resources/
+    │   ├── config.edn             → de onde a app lê sua configuração (ver seção abaixo)
+    │   └── schema.zed             → a regra de autorização (ver seção abaixo, e artigos 1-2)
+    └── src/streaming_authz/       → o código-fonte (ver detalhe abaixo)
+```
+
+### Dentro de `app/src/streaming_authz/` — pasta por pasta
+
+- **`core.clj`** — o ponto de entrada: liga os componentes (SpiceDB,
+  banco, servidor HTTP), roda a seed fixa, e sobe a aplicação.
+- **`config.clj`** — lê o `config.edn` na subida (ver seção abaixo).
+- **`domain/`** — a regra de negócio, sem nenhuma linha de gRPC ou SQL:
+  - `authz_client.clj` — a "promessa" de autorização (o protocolo).
+  - `movie_service.clj` — as perguntas de negócio (`can-view?`,
+    `available-movies`).
+- **`infra/spicedb/`** — quem fala de verdade com o SpiceDB:
+  - `client.clj` — implementação real do protocolo, via gRPC.
+  - `mapper.clj` — traduz ids do domínio pro formato que o SpiceDB
+    espera.
+- **`infra/db/`** — quem fala com o Postgres (database `app`):
+  - `datasource_component.clj` — abre/fecha a conexão com o banco.
+  - `movies_repo.clj`, `users_repo.clj` — leitura e escrita das duas
+    tabelas.
+- **`infra/http/`** — a camada HTTP (Pedestal):
+  - `pedestal_component.clj` — sobe/derruba o servidor.
+  - `routes.clj` — as rotas (`/health`, `/movies/:id/access`,
+    `/available-movies`, `/relationships`).
+  - `auth_interceptor.clj` — confere o token JWT antes de deixar passar.
+  - `response.clj` — formata a resposta em JSON.
+- **`infra/seed/`** — geração de dados de teste:
+  - `bootstrap.clj` — o cenário fixo (alice, bob, os 4 filmes), roda
+    sozinho toda vez que a app sobe.
+  - `generator.clj` — a seed de volume (`make seed PROFILE=...`), sob
+    demanda.
+- **`perf/bench.clj`** — mede a latência das checagens de permissão
+  (`make bench`).
+- **`dev/token.clj`** — gera um token JWT de teste (`make mint-token`);
+  só existe pra facilitar teste local, não é parte da API de produção.
+
+Isso é tudo o que existe em `app/src/` — nenhuma pasta a mais, nenhum
+arquivo "utilitário" solto. Cada pasta tem uma responsabilidade só, e o
+artigo 2 explica como elas conversam entre si.
 
 ---
 
